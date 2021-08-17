@@ -1,5 +1,5 @@
-﻿Build Instructions for OBS CDI
-==============================
+﻿Build Instructions for AWS CDI Plugin for OBS
+=============================================
 
 These are the build instructions for the OBS CDI plugin.  The broad steps are to build CDI, build OBS, then build the OBS CDI plugin.  You must build OBS from source in order to have a development environment with all the needed headers. 
  This plugin will enable a single CDI output of the OBS program output.  The plugin requires the pixel format to be I444 and converts I444 to YCbCr 10-bit 4:2:2.  The plugin also expects stereo audio at 48khz. We have tested this plugin with various frame rates and raster sizes but find that 1080p60 performs the best. There is a known issue where OBS sometimes crashes when turning off the CDI output and a second known issue where sometimes OBS CDI senses the wrong pixel format from the OBS configuration.  The solution to both is simply to exit and restart the application. 
