@@ -48,7 +48,7 @@ Download and build the CDI OBS Plugin
 
 In Powershell, navigate to the location you would like the CDI OBS Plugin to download to
 
-Download the CDI OBS repository \<Insert the git clone line here\>
+Download the CDI OBS repository \<https://github.com/aws/obs-cdi\>
 
 Open cmake-gui, and set these CMake variables:
 
