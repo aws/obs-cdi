@@ -9,8 +9,8 @@
    <rect>
     <x>0</x>
     <y>0</y>
-    <width>355</width>
-    <height>223</height>
+    <width>431</width>
+    <height>476</height>
    </rect>
   </property>
   <property name="sizePolicy">
@@ -27,8 +27,8 @@
     <rect>
      <x>9</x>
      <y>9</y>
-     <width>336</width>
-     <height>141</height>
+     <width>401</width>
+     <height>341</height>
     </rect>
    </property>
    <property name="sizePolicy">
@@ -49,6 +49,9 @@
    <layout class="QFormLayout" name="formLayout_3">
     <item row="0" column="0" colspan="2">
      <layout class="QFormLayout" name="formLayout_2">
+      <property name="fieldGrowthPolicy">
+       <enum>QFormLayout::AllNonFixedFieldsGrow</enum>
+      </property>
       <item row="0" column="0">
        <widget class="QLabel" name="mainOutputNameLabel">
         <property name="text">
@@ -79,15 +82,69 @@
       <item row="2" column="1">
        <widget class="QLineEdit" name="mainOutputPort"/>
       </item>
-      <item row="3" column="0">
+      <item row="4" column="0">
        <widget class="QLabel" name="mainOutputEFALabel">
         <property name="text">
-         <string>CDIPlugin.OutputSettings.Main.EFA</string>
+         <string>CDIPlugin.OutputSettings.Main.LocalIP</string>
         </property>
        </widget>
       </item>
-      <item row="3" column="1">
-       <widget class="QLineEdit" name="mainOutputEFA"/>
+      <item row="4" column="1">
+       <widget class="QLineEdit" name="mainOutputIP"/>
+      </item>
+      <item row="5" column="0">
+       <widget class="QLabel" name="mainVideoStreamIdLabel">
+        <property name="text">
+         <string>CDIPlugin.OutputSettings.Main.VideoStreamId</string>
+        </property>
+       </widget>
+      </item>
+      <item row="5" column="1">
+       <widget class="QLineEdit" name="mainVideoStreamId"/>
+      </item>
+      <item row="6" column="0">
+       <widget class="QLabel" name="mainAudioStreamIdLabel">
+        <property name="text">
+         <string>CDIPlugin.OutputSettings.Main.AudioStreamId</string>
+        </property>
+       </widget>
+      </item>
+      <item row="6" column="1">
+       <widget class="QLineEdit" name="mainAudioStreamId"/>
+      </item>
+      <item row="9" column="0">
+       <widget class="QLabel" name="mainBitDepthLabel">
+        <property name="text">
+         <string>CDIPlugin.OutputSettings.Main.BitDepth</string>
+        </property>
+       </widget>
+      </item>
+      <item row="7" column="0">
+       <widget class="QLabel" name="mainVideoSamplingLabel">
+        <property name="text">
+         <string>CDIPlugin.OutputSettings.Main.VideoSampling</string>
+        </property>
+       </widget>
+      </item>
+      <item row="7" column="1">
+       <widget class="QComboBox" name="mainComboBoxVideoSampling"/>
+      </item>
+      <item row="9" column="1">
+       <widget class="QComboBox" name="mainComboBoxBitDepth"/>
+      </item>
+      <item row="8" column="0">
+       <widget class="QLabel" name="mainAlphaUsedLabel">
+        <property name="text">
+         <string>CDIPlugin.OutputSettings.Main.AlphaUsed</string>
+        </property>
+       </widget>
+      </item>
+      <item row="8" column="1">
+       <widget class="QCheckBox" name="mainCheckBoxAlphaUsed">
+        <property name="text">
+         <string>Enable</string>
+        </property>
+       </widget>
       </item>
      </layout>
     </item>
@@ -96,10 +153,10 @@
   <widget class="QDialogButtonBox" name="buttonBox">
    <property name="geometry">
     <rect>
-     <x>180</x>
-     <y>190</y>
-     <width>156</width>
-     <height>23</height>
+     <x>10</x>
+     <y>430</y>
+     <width>411</width>
+     <height>41</height>
     </rect>
    </property>
    <property name="orientation">
@@ -113,8 +170,8 @@
    <property name="geometry">
     <rect>
      <x>10</x>
-     <y>150</y>
-     <width>331</width>
+     <y>440</y>
+     <width>211</width>
      <height>16</height>
     </rect>
    </property>
@@ -131,9 +188,9 @@
    <property name="geometry">
     <rect>
      <x>10</x>
-     <y>170</y>
-     <width>331</width>
-     <height>16</height>
+     <y>370</y>
+     <width>411</width>
+     <height>51</height>
     </rect>
    </property>
    <property name="font">
@@ -143,6 +200,9 @@
    </property>
    <property name="text">
     <string>CDI Notes</string>
+   </property>
+   <property name="wordWrap">
+    <bool>true</bool>
    </property>
   </widget>
  </widget>

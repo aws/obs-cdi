@@ -25,11 +25,65 @@ OutputSettings::OutputSettings(QWidget *parent) :
 	ui(new Ui::OutputSettings)
 {
 	ui->setupUi(this);
-	connect(ui->buttonBox, SIGNAL(accepted()),
-		this, SLOT(onFormAccepted()));
+	connect(ui->buttonBox, SIGNAL(accepted()), this, SLOT(onFormAccepted()));
 
-	ui->cdiVersionLabel->setText("OBS CDI plugin v1.6.0 GA");
+	ui->cdiVersionLabel->setText("OBS CDI plugin " OBS_CDI_VERSION);
 	ui->cdiNotesLabel->setText("Requires I444 Color and Stereo Audio. Set accordingly in Settings.");
+
+	ui->mainComboBoxVideoSampling->addItem("YCbCr 4:4:4", (int)kCdiAvmVidYCbCr444);
+	ui->mainComboBoxVideoSampling->addItem("YCbCr 4:2:2", (int)kCdiAvmVidYCbCr444);
+	ui->mainComboBoxVideoSampling->addItem("RGB", (int)kCdiAvmVidRGB);
+	connect(ui->mainComboBoxVideoSampling, &QComboBox::currentIndexChanged, this, &OutputSettings::VideoSamplingChanged);
+
+	ui->mainComboBoxBitDepth->addItem("8-bit", (int)kCdiAvmVidBitDepth8);
+	ui->mainComboBoxBitDepth->addItem("10-bit", (int)kCdiAvmVidBitDepth10);
+	ui->mainComboBoxBitDepth->addItem("12-bit", (int)kCdiAvmVidBitDepth12);
+	connect(ui->mainComboBoxBitDepth, &QComboBox::currentIndexChanged, this, &OutputSettings::BitDepthChanged);
+}
+
+void OutputSettings::UpdateControls()
+{
+	Config* conf = Config::Current();
+	bool not_supported = false;
+
+	switch (conf->OutputVideoSampling) {
+		case kCdiAvmVidYCbCr444:
+			not_supported = true;
+			ui->mainCheckBoxAlphaUsed->setEnabled(false);
+		break;
+		case kCdiAvmVidYCbCr422:
+			ui->mainCheckBoxAlphaUsed->setEnabled(false);
+			if (kCdiAvmVidBitDepth12 == conf->OutputBitDepth) {
+				not_supported = true;
+			} else {
+				ui->cdiNotesLabel->setText("Requires I444 Color and Stereo Audio. Set accordingly in Settings.");
+			}
+		break;
+		case kCdiAvmVidRGB:
+			ui->mainCheckBoxAlphaUsed->setEnabled(true);
+			not_supported = true;
+		break;
+	}
+
+	if (not_supported) {
+		ui->cdiNotesLabel->setText("Video output configuration is not supported yet.");
+	}
+}
+
+void OutputSettings::VideoSamplingChanged(int index)
+{
+	Config* conf = Config::Current();
+
+	conf->OutputVideoSampling = (CdiAvmVideoSampling)ui->mainComboBoxVideoSampling->currentIndex();
+	UpdateControls();
+}
+
+void OutputSettings::BitDepthChanged(int index)
+{
+	Config* conf = Config::Current();
+
+	conf->OutputBitDepth = (CdiAvmVideoBitDepth)ui->mainComboBoxBitDepth->currentIndex();
+	UpdateControls();
 }
 
 void OutputSettings::onFormAccepted() {
@@ -38,8 +92,13 @@ void OutputSettings::onFormAccepted() {
 	conf->OutputEnabled = ui->mainOutputGroupBox->isChecked();
 	conf->OutputName = ui->mainOutputName->text();
 	conf->OutputDest = ui->mainOutputDest->text();
-	conf->OutputPort = ui->mainOutputPort->text();
-	conf->OutputEFA = ui->mainOutputEFA->text();
+	conf->OutputPort = ui->mainOutputPort->text().toInt();
+	conf->OutputIP = ui->mainOutputIP->text();
+	conf->OutputVideoStreamId = ui->mainVideoStreamId->text().toInt();
+	conf->OutputAudioStreamId = ui->mainAudioStreamId->text().toInt();
+	conf->OutputVideoSampling = (CdiAvmVideoSampling)ui->mainComboBoxVideoSampling->currentIndex();
+	conf->OutputBitDepth = (CdiAvmVideoBitDepth)ui->mainComboBoxBitDepth->currentIndex();
+
 	conf->Save();
 
 	if (conf->OutputEnabled) {
@@ -58,8 +117,12 @@ void OutputSettings::showEvent(QShowEvent* event) {
 	ui->mainOutputGroupBox->setChecked(conf->OutputEnabled);
 	ui->mainOutputName->setText(conf->OutputName);
 	ui->mainOutputDest->setText(conf->OutputDest);
-	ui->mainOutputPort->setText(conf->OutputPort);
-	ui->mainOutputEFA->setText(conf->OutputEFA);
+	ui->mainOutputPort->setText(QString::number(conf->OutputPort));
+	ui->mainOutputIP->setText(conf->OutputIP);
+	ui->mainVideoStreamId->setText(QString::number(conf->OutputVideoStreamId));
+	ui->mainAudioStreamId->setText(QString::number(conf->OutputAudioStreamId));
+	ui->mainComboBoxVideoSampling->setCurrentIndex(conf->OutputVideoSampling);
+	ui->mainComboBoxBitDepth->setCurrentIndex(conf->OutputBitDepth);
 }
 
 void OutputSettings::ToggleShowHide() {

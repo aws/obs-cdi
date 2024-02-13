@@ -32,6 +32,9 @@ public:
 	void ToggleShowHide();
 
 private slots:
+	void VideoSamplingChanged(int index);
+	void BitDepthChanged(int index);
+	void UpdateControls();
 	void onFormAccepted();
 
 private:

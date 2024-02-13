@@ -21,6 +21,18 @@
 
 #include <QString>
 #include <obs-module.h>
+#include "cdi_baseline_profile_02_00_api.h"
+
+#define SECTION_NAME "CDIPlugin"
+#define PARAM_MAIN_OUTPUT_ENABLED "MainOutputEnabled"
+#define PARAM_MAIN_OUTPUT_NAME "MainOutputName"
+#define PARAM_MAIN_OUTPUT_DEST "MainOutputDest"
+#define PARAM_MAIN_OUTPUT_PORT "MainOutputPort"
+#define PARAM_MAIN_OUTPUT_IP "MainOutputIP"
+#define PARAM_MAIN_OUTPUT_VIDEO_STREAM_ID "MainOutputVideoStreamId"
+#define PARAM_MAIN_OUTPUT_AUDIO_STREAM_ID "MainOutputAudioStreamId"
+#define PARAM_MAIN_OUTPUT_VIDEO_SAMPLING "MainOutputComboBoxVideoSampling"
+#define PARAM_MAIN_OUTPUT_BIT_DEPTH "MainOutputComboBoxBitDepth"
 
 class Config {
   public:
@@ -34,9 +46,13 @@ class Config {
 	bool OutputEnabled;
 	QString OutputName;
 	QString OutputDest;
-	QString OutputPort;
-	QString OutputEFA;
+	int OutputPort;
+	QString OutputIP;
+	int OutputVideoStreamId;
+	int OutputAudioStreamId;
 	bool PreviewOutputEnabled;
+	CdiAvmVideoSampling OutputVideoSampling;
+	CdiAvmVideoBitDepth OutputBitDepth;
 
   private:
 	static Config* _instance;

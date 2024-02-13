@@ -32,9 +32,7 @@ void main_output_init(const char* default_name)
 
 	obs_data_t* settings = obs_data_create();
 	obs_data_set_string(settings, "cdi_name", default_name);
-	main_out = obs_output_create(
-			"cdi_output", "CDI Main Output", settings, nullptr
-	);
+	main_out = obs_output_create("cdi_output", "CDI Main Output", settings, nullptr);
 	obs_data_release(settings);
 }
 

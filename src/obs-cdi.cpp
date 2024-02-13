@@ -16,11 +16,8 @@
 -------------------------------------------------------------------------------------------
 */
 
-#ifdef _WIN32
-#include <Windows.h>
-#endif
-
 #include <sys/stat.h>
+#include <mutex>
 
 #include <obs-module.h>
 #include <obs-frontend-api.h>
@@ -40,24 +37,111 @@
 #include "Config.h"
 #include "output-settings.h"
 
+using namespace std;
+
 OBS_DECLARE_MODULE()
 OBS_MODULE_AUTHOR("Amazon Web Services")
 OBS_MODULE_USE_DEFAULT_LOCALE("obs-cdi", "en-US")
 
-
-extern struct obs_output_info create_cdi_output_info();
+struct obs_source_info cdi_source_info;
 struct obs_output_info cdi_output_info;
-
 
 QLibrary* loaded_lib = nullptr;
 OutputSettings* output_settings;
+CdiLogMethodData log_method_data;
+
+static mutex adapter_mutex;
+static volatile int adapter_ref_count = 0;
+static CdiAdapterHandle adapter_handle = nullptr;
+static CdiAdapterData adapter_data{};
+
+CdiAdapterHandle NetworkAdapterInitialize(const char* local_adapter_ip_str, void** ret_tx_buffer_ptr)
+{
+	lock_guard<mutex> guard(adapter_mutex);
+
+	if (0 == adapter_ref_count) {
+		adapter_data.adapter_ip_addr_str = local_adapter_ip_str;
+        adapter_data.tx_buffer_size_bytes = MAX_PAYLOAD_SIZE * MAX_NUMBER_OF_TX_PAYLOADS;
+		adapter_data.adapter_type = kCdiAdapterTypeEfa;
+
+        blog(LOG_INFO, "Local IP: %s", local_adapter_ip_str);
+		if (kCdiStatusOk != CdiCoreNetworkAdapterInitialize(&adapter_data, &adapter_handle)) {
+			return nullptr;
+		}
+	}
+	adapter_ref_count++;
+
+	if (ret_tx_buffer_ptr) {
+		*ret_tx_buffer_ptr = adapter_data.ret_tx_buffer_ptr;
+	}
+
+	return adapter_handle;
+}
+
+void NetworkAdapterDestroy(void)
+{
+	lock_guard<mutex> guard(adapter_mutex);
+
+	assert(0 != adapter_ref_count);
+	if (1 == adapter_ref_count) {
+        CdiCoreNetworkAdapterDestroy(adapter_handle);
+		adapter_handle = nullptr;
+		memset(&adapter_data, 0, sizeof(adapter_data));
+	}
+	adapter_ref_count--;
+}
+
+void TestConsoleLogMessageCallback(const CdiLogMessageCbData* cb_data_ptr)
+{
+    if (CdiLoggerIsEnabled(NULL, cb_data_ptr->component, cb_data_ptr->log_level)) {
+        // We need to generate a single log message that contains an optional function name and line number for the
+        // first line. Multiline messages need to have each line separated with a line ending character. This is all
+        // handled by the Multiline API functions, so we will just use them.
+        CdiLogMultilineState m_state;
+        CdiLoggerMultilineBegin(NULL, cb_data_ptr->component, cb_data_ptr->log_level,
+                                cb_data_ptr->source_code_function_name_ptr, cb_data_ptr->source_code_line_number,
+                                &m_state);
+        // Walk through each line and write to the new single log message buffer.
+        const char* line_str = cb_data_ptr->message_str;
+        for (int i = 0; i < cb_data_ptr->line_count; i++) {
+            CdiLoggerMultiline(&m_state, line_str);
+            line_str += strlen(line_str) + 1; // Advance pointer to byte just past end of the current string.
+        }
+
+        char* log_str = CdiLoggerMultilineGetBuffer(&m_state);
+		// Logs are written to: C:\Users\<username>\AppData\Roaming\OBS\logs
+		blog(LOG_INFO, "%s", log_str); // send to stdout
+        CdiLoggerMultilineEnd(&m_state);
+    }
+}
 
 bool obs_module_load(void)
 {
 	QMainWindow* main_window = (QMainWindow*)obs_frontend_get_main_window();
 
+	cdi_source_info = create_cdi_source_info();
+	obs_register_source(&cdi_source_info);
+
 	cdi_output_info = create_cdi_output_info();
 	obs_register_output(&cdi_output_info);
+
+    // CDI-SDK log messages got to a callback, so they can use the OBS blog() API.
+    log_method_data.log_method = kLogMethodCallback;
+    log_method_data.callback_data.log_msg_cb_ptr = TestConsoleLogMessageCallback;
+    log_method_data.callback_data.log_user_cb_param = NULL;
+
+    CdiCoreConfigData core_config;
+    core_config.default_log_level = kLogDebug;
+    core_config.global_log_method_data_ptr = &log_method_data;
+    core_config.cloudwatch_config_ptr = NULL; //Don't use cloudwatch for this. This can be changed later if someone wants to have the
+                                              // payloads tracked in CloudWatch.
+
+    // Init CDI with the core config we just built.
+    CdiReturnStatus rs = CdiCoreInitialize(&core_config);
+    blog(LOG_INFO, "CdiCoreInitialize: %d", rs);
+	if (kCdiStatusOk != rs) {
+		return false;
+	}
 
 	if (main_window) {
 		Config* conf = Config::Current();
@@ -97,6 +181,10 @@ bool obs_module_load(void)
 	return true;
 }
 
+void obs_module_unload(void)
+{
+	CdiCoreShutdown();
+}
 
 const char* obs_module_name()
 {
@@ -107,4 +195,3 @@ const char* obs_module_description()
 {
 	return "CDI Output for OBS Studio";
 }
-
