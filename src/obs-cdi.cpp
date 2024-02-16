@@ -37,8 +37,6 @@
 #include "Config.h"
 #include "output-settings.h"
 
-using namespace std;
-
 OBS_DECLARE_MODULE()
 OBS_MODULE_AUTHOR("Amazon Web Services")
 OBS_MODULE_USE_DEFAULT_LOCALE("obs-cdi", "en-US")
@@ -50,14 +48,14 @@ QLibrary* loaded_lib = nullptr;
 OutputSettings* output_settings;
 CdiLogMethodData log_method_data;
 
-static mutex adapter_mutex;
+static std::mutex adapter_mutex;
 static volatile int adapter_ref_count = 0;
 static CdiAdapterHandle adapter_handle = nullptr;
 static CdiAdapterData adapter_data{};
 
 CdiAdapterHandle NetworkAdapterInitialize(const char* local_adapter_ip_str, void** ret_tx_buffer_ptr)
 {
-	lock_guard<mutex> guard(adapter_mutex);
+	std::lock_guard<std::mutex> guard(adapter_mutex);
 
 	if (0 == adapter_ref_count) {
 		adapter_data.adapter_ip_addr_str = local_adapter_ip_str;
@@ -80,7 +78,7 @@ CdiAdapterHandle NetworkAdapterInitialize(const char* local_adapter_ip_str, void
 
 void NetworkAdapterDestroy(void)
 {
-	lock_guard<mutex> guard(adapter_mutex);
+	std::lock_guard<std::mutex> guard(adapter_mutex);
 
 	assert(0 != adapter_ref_count);
 	if (1 == adapter_ref_count) {

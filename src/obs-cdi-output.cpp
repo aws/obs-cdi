@@ -31,6 +31,7 @@
 #include "config.h"
 #include <util/config-file.h>
 #include <algorithm>
+#include <mutex>
 
 extern "C" {
 #include "obs-cdi.h"
@@ -88,8 +89,6 @@ struct TestConnectionInfo {
 
     CdiPoolHandle tx_user_data_pool_handle ; ///< Handle of memory pool used to hold Tx user data.
 
-    uint64_t payload_start_time;           ///< Payload start time, used by Tx Callback functions.
-    int rate_period_microseconds;          ///< Calculated Tx rate period.
 
     /// @brief Number of times payload callback function has been invoked. NOTE: This variable is used by multiple
     /// threads and not declared volatile. It is used as an example of how to use the CdiOsAtomic...() API functions.
@@ -100,6 +99,7 @@ struct TestConnectionInfo {
 // for manipulation of the data.
 struct cdi_output
 {
+    std::mutex connection_mutex;
     obs_output_t* output;
     const char* cdi_name;
     bool uses_video;
@@ -115,11 +115,14 @@ struct cdi_output
     uint32_t conv_linesize;
     uint8_t* audio_conv_buffer;
     size_t audio_conv_buffer_size;
-    os_performance_token_t* perf_token;
 
     TestConnectionInfo con_info{0};
+
     CdiAvmConfig avm_video_config{0};
+    int video_unit_size;
+
     CdiAvmConfig avm_audio_config{0};
+    int audio_unit_size;
 };
 
 /**
@@ -137,7 +140,7 @@ struct TestTxUserData {
 
 /**
  * @brief Initialize a pool memory item.
- * 
+ *
  * @param context_ptr Pointer to user defined parameter (a pointer to a buffer pointer).
  * @param item_ptr Pointer to the new pool item to initialize.
  *
@@ -192,16 +195,6 @@ static void TestAvmTxCallback(const CdiAvmTxCbData* cb_data_ptr)
     if (kCdiStatusOk != cb_data_ptr->core_cb_data.status_code) {
         blog(LOG_ERROR, "Send payload failed[%s].",	CdiCoreStatusToString(cb_data_ptr->core_cb_data.status_code));
     }
-    else {
-        uint64_t timeout_time = user_data_ptr->cdi_ptr->con_info.payload_start_time + user_data_ptr->cdi_ptr->con_info.test_settings.tx_timeout;
-        uint64_t current_time = CdiOsGetMicroseconds();
-        if (current_time > timeout_time) {
-            blog(LOG_WARNING, "Payload [%d] late by [%llu]microseconds.", count, current_time - timeout_time);
-        }
-    }
-
-    // Set next payload's expected start time.
-    user_data_ptr->cdi_ptr->con_info.payload_start_time += user_data_ptr->cdi_ptr->con_info.rate_period_microseconds;
 
     // Return user data to memory pool.
     CdiPoolPut(user_data_ptr->cdi_ptr->con_info.tx_user_data_pool_handle, user_data_ptr);
@@ -241,7 +234,7 @@ static CdiReturnStatus MakeVideoConfig(const TestConnectionInfo* connection_info
     CdiAvmBaselineConfig baseline_config{};
     baseline_config.payload_type = kCdiAvmVideo;
     baseline_config.video_config.version.major = 01; // Using baseline profile V01.00
-    baseline_config.video_config.version.minor = 00;  
+    baseline_config.video_config.version.minor = 00;
     baseline_config.video_config.width = (uint16_t)video_info->width;
     baseline_config.video_config.height = (uint16_t)video_info->height;
     baseline_config.video_config.sampling = connection_info_ptr->test_settings.video_sampling;
@@ -292,22 +285,21 @@ static CdiReturnStatus MakeAudioConfig(const TestConnectionInfo* connection_info
  * @param user_data_ptr Pointer to user data.
  * @param timestamp_ptr Pointer to timestamp.
  * @param avm_config_ptr Pointer to the generic configuration structure to use for the stream.
+ * @param unit_size Size of units in bits to ensure a single unit is not split across sgl.
  * @param stream_identifier CDI stream identifier.
  *
  * @return true if successfully queued payload to be sent.
  */
 static bool SendAvmPayload(TestTxUserData* user_data_ptr, CdiPtpTimestamp* timestamp_ptr, CdiAvmConfig* avm_config_ptr,
-                           int stream_identifier)
+                           int unit_size, int stream_identifier)
  {
     CdiReturnStatus rs = kCdiStatusOk;
 
-    CdiAvmTxPayloadConfig payload_config = {
-        *timestamp_ptr, // origination_ptp_timestamp
-        0, // payload_user_data
-        user_data_ptr, // user_cb_param
-        0, // unit_size
-        (uint16_t)stream_identifier // stream_identifier
-    };
+    CdiAvmTxPayloadConfig payload_config = { 0 };
+    payload_config.core_config_data.core_extra_data.origination_ptp_timestamp = *timestamp_ptr;
+    payload_config.core_config_data.user_cb_param = user_data_ptr;
+    payload_config.core_config_data.unit_size = unit_size;
+    payload_config.avm_extra_data.stream_identifier = stream_identifier;
 
     // Send the payload, retrying if the queue is full.
     do {
@@ -320,7 +312,7 @@ static bool SendAvmPayload(TestTxUserData* user_data_ptr, CdiPtpTimestamp* times
 
 /**
  * @brief Convert three plane YUV to single plane YCbCr.
- * 
+ *
  * @param YUV Array of pointers to 3 planes for source YUV data.
  * @param in_linesize Linesize of YUV source data in bytes.
  * @param start_y Starting line.
@@ -354,7 +346,7 @@ static void i444_to_ycbcr(uint8_t* YUV[], uint32_t in_linesize[], uint32_t start
 
 /**
  * @brief Called by OBS to get the name of the output from the configuration.
- * 
+ *
  * @param data Pointer to user data.
  *
  * @return Pointer to output name string.
@@ -366,7 +358,7 @@ const char* cdi_output_getname(void*)
 
 /**
  * @brief Called by OBS to create and get the output's properties.
- * 
+ *
  * @return Pointer to new properties object.
  */
 obs_properties_t* cdi_output_getproperties(void*)
@@ -381,7 +373,7 @@ obs_properties_t* cdi_output_getproperties(void*)
 
 /**
  * @brief Called by OBS to get the output's default settings.
- * 
+ *
  * @param settings Pointer to OBS settings structure.
  */
 void cdi_output_getdefaults(obs_data_t* settings)
@@ -393,7 +385,7 @@ void cdi_output_getdefaults(obs_data_t* settings)
 
 /**
  * @brief Called by OBS to start the CDI output.
- * 
+ *
  * @param data Pointer to user data.
  *
  * @return true if successfully started, otherwise false is returned.
@@ -411,7 +403,7 @@ bool cdi_output_start(void* data)
         blog(LOG_ERROR, "'%s': no video and audio available", cdi_ptr->cdi_name);
         return false;
     }
-    
+
     // Get some information about it.
     if (cdi_ptr->uses_video && video) {
         video_format format = video_output_get_format(video);
@@ -460,10 +452,9 @@ bool cdi_output_start(void* data)
     cdi_ptr->con_info.test_settings.video_sampling = (CdiAvmVideoSampling)config_get_int(obs_config, SECTION_NAME, PARAM_MAIN_OUTPUT_VIDEO_SAMPLING);
     cdi_ptr->con_info.test_settings.bit_depth = (CdiAvmVideoBitDepth)config_get_int(obs_config, SECTION_NAME, PARAM_MAIN_OUTPUT_BIT_DEPTH);
 
-    int unit_size = 0; // Not used.
     // Fill in the AVM configuration structure and payload unit size for both video and audio.
-    MakeVideoConfig(&cdi_ptr->con_info, &cdi_ptr->avm_video_config, &unit_size, video_info);
-    MakeAudioConfig(&cdi_ptr->con_info, &cdi_ptr->avm_audio_config, &unit_size);
+    MakeVideoConfig(&cdi_ptr->con_info, &cdi_ptr->avm_video_config, &cdi_ptr->video_unit_size, video_info);
+    MakeAudioConfig(&cdi_ptr->con_info, &cdi_ptr->avm_audio_config, &cdi_ptr->audio_unit_size);
 
     CdiOsSignalCreate(&cdi_ptr->con_info.connection_state_change_signal);
 
@@ -486,7 +477,7 @@ bool cdi_output_start(void* data)
         } else {
             uint8_t* tx_buffer_ptr = (uint8_t*)ret_tx_buffer_ptr;
             if (!CdiPoolCreateAndInitItems("TestTxUserData Pool", MAX_NUMBER_OF_TX_PAYLOADS, 0, 0, sizeof(TestTxUserData),
-                false, // false= Not thread-safe (don't use OS resource locks)
+                true, // true= Make thread-safe (use OS resource locks)
                 &cdi_ptr->con_info.tx_user_data_pool_handle,
                 InitPoolItem,
                 &tx_buffer_ptr)) {
@@ -508,7 +499,7 @@ bool cdi_output_start(void* data)
         config_data.connection_cb_ptr = TestConnectionCallback;
         config_data.connection_user_cb_param = cdi_ptr;
         config_data.stats_config.disable_cloudwatch_stats = true;
-        
+
         blog(LOG_INFO, "Creating AVM Tx connection.");
         blog(LOG_INFO, "Local IP: [%s]", cdi_ptr->con_info.test_settings.local_adapter_ip_str);
         blog(LOG_INFO, "Remote: [%s:%d]", config_data.dest_ip_addr_str, config_data.dest_port);
@@ -525,14 +516,7 @@ bool cdi_output_start(void* data)
     // errors or the connection drops, then exit the loop.
     //----------------------------------------------------------------------------------------------------------------
 
-    // Setup rate period and start times.I don't really think this is needed in this particular case because
-    // OBS paces the frame calls. But We keep it here as an example. 
-    cdi_ptr->con_info.rate_period_microseconds = ((1000000 * cdi_ptr->con_info.test_settings.rate_denominator) /
-        cdi_ptr->con_info.test_settings.rate_numerator);
-    cdi_ptr->con_info.payload_start_time = CdiOsGetMicroseconds();
-    uint64_t rate_next_start_time = cdi_ptr->con_info.payload_start_time + cdi_ptr->con_info.rate_period_microseconds;
-
-    //Tell OBS we've started and to start capturing the video and audio frames with the flags we set earlier. 
+    //Tell OBS we've started and to start capturing the video and audio frames with the flags we set earlier.
     cdi_ptr->started = obs_output_begin_data_capture(cdi_ptr->output, flags);
 
     return cdi_ptr->started;
@@ -540,7 +524,7 @@ bool cdi_output_start(void* data)
 
 /**
  * @brief Called by OBS to stop the CDI output if someone decides to stop or exit.
- * 
+ *
  * @param data Pointer to user data.
  * @param ts The timestamp to stop. If 0, the output should attempt to stop immediately rather than wait for any more
  *           data to process.
@@ -549,11 +533,10 @@ void cdi_output_stop(void* data, uint64_t ts)
 {
     cdi_output* cdi_ptr = (cdi_output*)data;
 
+	std::lock_guard<std::mutex> guard(cdi_ptr->connection_mutex);
+
     cdi_ptr->started = false;
     obs_output_end_data_capture(cdi_ptr->output);
-
-    os_end_high_performance(cdi_ptr->perf_token);
-    cdi_ptr->perf_token = NULL;
 
     if (cdi_ptr->conv_buffer) {
         delete cdi_ptr->conv_buffer;
@@ -591,8 +574,8 @@ void cdi_output_stop(void* data, uint64_t ts)
 }
 
 /**
- * @brief Called by OBS to update the output  with setting changes.
- * 
+ * @brief Called by OBS to update the output with setting changes.
+ *
  * @param data Pointer to CDI output data structure.
  * @param settings Pointer to OBS settings.
  */
@@ -608,7 +591,7 @@ void cdi_output_update(void* data, obs_data_t* settings)
 /**
  * @brief Called by OBS to create the CDI output when CDI output is enabled at startup or
  *        if enabled by changing the configuration.
- * 
+ *
  * @param settings Pointer to OBS settings.
  * @param output Pointer to OBS output.
  *
@@ -622,7 +605,6 @@ void* cdi_output_create(obs_data_t* settings, obs_output_t* output)
     cdi_ptr->started = false;
     cdi_ptr->audio_conv_buffer = nullptr;
     cdi_ptr->audio_conv_buffer_size = 0;
-    cdi_ptr->perf_token = NULL;
 
     cdi_output_update(cdi_ptr, settings);
 
@@ -631,7 +613,7 @@ void* cdi_output_create(obs_data_t* settings, obs_output_t* output)
 
 /**
  * @brief Destroys the CDI structure and frees up the memory.
- * 
+ *
  * @param data Pointer to CDI output data.
  */
 void cdi_output_destroy(void* data)
@@ -645,7 +627,7 @@ void cdi_output_destroy(void* data)
 
 /**
  * @brief Convert an OBS video frame to CDI 4:2:2.
- * 
+ *
  * @param user_data_ptr Pointer to user data related to the frame to convert.
  * @param frame Pointer to OBS video frame data.
  *
@@ -669,7 +651,12 @@ static bool ObsToCdi422VideoFrame(TestTxUserData* user_data_ptr, struct video_da
     i444_to_ycbcr(frame->data, frame->linesize, 0, height, cdi_ptr->conv_buffer, cdi_ptr->conv_linesize);
 
     if (kCdiAvmVidBitDepth8 == cdi_ptr->con_info.test_settings.bit_depth) {
-        // Nothing needed.
+        int payload_size_8bit = height * width * 2; // 8-bit 4:2:2
+
+        // Setup the SGI size and copy the frame data to the SGL buffer.
+        user_data_ptr->sglist.total_data_size = payload_size_8bit;
+        user_data_ptr->sglist.sgl_head_ptr->size_in_bytes = payload_size_8bit;
+        memcpy(user_data_ptr->sglist.sgl_head_ptr->address_ptr, frame->data[0], payload_size_8bit);
     }
     else if (kCdiAvmVidBitDepth10 == cdi_ptr->con_info.test_settings.bit_depth) {
         // Loop to convert 8 bit to 10 bit. This is needed because lots of professional video software only expects 10 bit.
@@ -687,7 +674,7 @@ static bool ObsToCdi422VideoFrame(TestTxUserData* user_data_ptr, struct video_da
         uint32_t pgroup;
         for (int i = 0; i < payload_size_8bit; i += 4) {
             // The first byte in 8 bit vs 10 bit is the same so we just set the value of the first byte at the memory address
-            // of txptr to the value at srcptr 
+            // of txptr to the value at srcptr
             *(txptr + 0) = *srcptr;
 
             // For the rest of the bytes, shift the pixels in (shift 3 bytes into a temp uint32).
@@ -712,7 +699,7 @@ static bool ObsToCdi422VideoFrame(TestTxUserData* user_data_ptr, struct video_da
 
 /**
  * @brief Convert an OBS video frame to CDI 4:4:4.
- * 
+ *
  * @param user_data_ptr Pointer to user data related to the frame to convert.
  * @param frame Pointer to OBS video frame data.
  *
@@ -731,7 +718,7 @@ static bool ObsToCdi444VideoFrame(TestTxUserData* user_data_ptr, struct video_da
 
 /**
  * @brief Convert an OBS video frame to CDI RGB.
- * 
+ *
  * @param user_data_ptr Pointer to user data related to the frame to convert.
  * @param frame Pointer to OBS video frame data.
  *
@@ -750,13 +737,15 @@ static bool ObsToCdiRgbVideoFrame(TestTxUserData* user_data_ptr, struct video_da
 
 /**
  * @brief Called by OBS to output a video frame.
- * 
+ *
  * @param data Pointer to CDI output data structure.
  * @param frame Pointer to OBS video frame structure.
  */
 void cdi_output_rawvideo(void* data, struct video_data* frame)
 {
     cdi_output* cdi_ptr = (cdi_output*)data;
+
+	std::lock_guard<std::mutex> guard(cdi_ptr->connection_mutex);
 
     if (kCdiConnectionStatusConnected != cdi_ptr->con_info.connection_status) {
         return; // Not connected, so cannot output the frame.
@@ -790,8 +779,9 @@ void cdi_output_rawvideo(void* data, struct video_data* frame)
         timestamp.seconds = floor(frame->timestamp / 1000000000);
         timestamp.nanoseconds = frame->timestamp - (timestamp.seconds * 1000000000);
 
-        // Send the payload.
-        if (!SendAvmPayload(user_data_ptr, &timestamp, &cdi_ptr->avm_video_config, cdi_ptr->con_info.test_settings.video_stream_id)) {
+        // Send the video payload.
+        if (!SendAvmPayload(user_data_ptr, &timestamp, &cdi_ptr->avm_video_config, cdi_ptr->video_unit_size,
+                            cdi_ptr->con_info.test_settings.video_stream_id)) {
             send_frame = false;
         }
     }
@@ -804,13 +794,15 @@ void cdi_output_rawvideo(void* data, struct video_data* frame)
 
 /**
  * @brief Called by OBS to output a audio frame.
- * 
+ *
  * @param data Pointer to CDI output data structure.
  * @param frame Pointer to OBS video frame structure.
  */
 void cdi_output_rawaudio(void* data, struct audio_data* frame)
 {
     cdi_output* cdi_ptr = (cdi_output*)data;
+
+	std::lock_guard<std::mutex> guard(cdi_ptr->connection_mutex);
 
     if (kCdiConnectionStatusConnected != cdi_ptr->con_info.connection_status) {
         return; // Not connected, so cannot output the frame.
@@ -883,8 +875,9 @@ void cdi_output_rawaudio(void* data, struct audio_data* frame)
     timestamp.seconds = floor(frame->timestamp / 1000000000);
     timestamp.nanoseconds = frame->timestamp - (timestamp.seconds * 1000000000);
 
-    // Send the payload.
-    if (!SendAvmPayload(user_data_ptr, &timestamp, &cdi_ptr->avm_audio_config, cdi_ptr->con_info.test_settings.audio_stream_id)) {
+    // Send the audio payload.
+    if (!SendAvmPayload(user_data_ptr, &timestamp, &cdi_ptr->avm_audio_config, cdi_ptr->audio_unit_size,
+                        cdi_ptr->con_info.test_settings.audio_stream_id)) {
         // Error occurred, so return the user data to memory pool.
         CdiPoolPut(user_data_ptr->cdi_ptr->con_info.tx_user_data_pool_handle, user_data_ptr);
     }
@@ -892,7 +885,7 @@ void cdi_output_rawaudio(void* data, struct audio_data* frame)
 
 /**
  * @brief Create a OBS structure that describes the available functions for this plugin.
- * 
+ *
  * @return OBS output structure.
  */
 struct obs_output_info create_cdi_output_info()

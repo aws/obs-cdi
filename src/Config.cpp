@@ -59,7 +59,7 @@ void Config::Load() {
 		OutputIP = config_get_string(obs_config, SECTION_NAME, PARAM_MAIN_OUTPUT_IP);
 		OutputVideoStreamId = config_get_int(obs_config, SECTION_NAME, PARAM_MAIN_OUTPUT_VIDEO_STREAM_ID);
 		OutputAudioStreamId = config_get_int(obs_config, SECTION_NAME, PARAM_MAIN_OUTPUT_AUDIO_STREAM_ID);
-		OutputVideoSampling = (CdiAvmVideoSampling)config_get_int(obs_config, SECTION_NAME, PARAM_MAIN_OUTPUT_BIT_DEPTH);
+		OutputVideoSampling = (CdiAvmVideoSampling)config_get_int(obs_config, SECTION_NAME, PARAM_MAIN_OUTPUT_VIDEO_SAMPLING);
 		OutputBitDepth = (CdiAvmVideoBitDepth)config_get_int(obs_config, SECTION_NAME, PARAM_MAIN_OUTPUT_BIT_DEPTH);
 	}
 }

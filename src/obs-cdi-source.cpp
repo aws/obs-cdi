@@ -44,7 +44,6 @@ extern "C" {
 #include "cdi_log_api.h"
 #include "cdi_log_enums.h"
 #include "cdi_logger_api.h"
-#include "cdi_pool_api.h"
 #include "cdi_queue_api.h"
 #include "cdi_raw_api.h"
 #include "cdi_utility_api.h"
