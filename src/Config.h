@@ -32,6 +32,7 @@
 #define PARAM_MAIN_OUTPUT_VIDEO_STREAM_ID "MainOutputVideoStreamId"
 #define PARAM_MAIN_OUTPUT_AUDIO_STREAM_ID "MainOutputAudioStreamId"
 #define PARAM_MAIN_OUTPUT_VIDEO_SAMPLING "MainOutputComboBoxVideoSampling"
+#define PARAM_MAIN_OUTPUT_ALPHA_USED "MainOutputCheckBoxAlphaUsed"
 #define PARAM_MAIN_OUTPUT_BIT_DEPTH "MainOutputComboBoxBitDepth"
 
 class Config {
@@ -52,6 +53,7 @@ class Config {
 	int OutputAudioStreamId;
 	bool PreviewOutputEnabled;
 	CdiAvmVideoSampling OutputVideoSampling;
+	bool OutputAlphaUsed;
 	CdiAvmVideoBitDepth OutputBitDepth;
 
   private:

@@ -1,11 +1,8 @@
 # --------------------------------------------------------------------------------
 # Configure these settings a necessary. Example paths are shown.
 # --------------------------------------------------------------------------------
-# Path to CDI-SDK include folder:
-set(CDI_INCLUDE_DIR "D:/CDI/aws-cdi-sdk/include")
-
-# Path to CDI Debug DLL binaries:
-set(CDI_LIB_DIR "D:/CDI/aws-cdi-sdk/proj/x64/Debug_DLL")
+# Path to CDI-SDK root folder:
+set(CDI_DIR "D:/CDI/aws-cdi-sdk")
 
 # Path where OBS was installed and built using Debug build:
 set (OBS_DIR "D:/obs-studio")
@@ -60,8 +57,8 @@ if(ENABLE_QT)
 endif()
 
 # For CDI-plugin. Add CDI includes and link library.
-include_directories("${CDI_INCLUDE_DIR}")
-target_link_libraries(${CMAKE_PROJECT_NAME} PRIVATE "${CDI_LIB_DIR}/cdi_sdk.lib")
+include_directories("${CDI_DIR}/include")
+target_link_libraries(${CMAKE_PROJECT_NAME} PRIVATE "${CDI_DIR}/proj/x64/$<CONFIG>_DLL/cdi_sdk.lib")
 
 # For CDI-plugin. Add source and header files.
 target_sources(${CMAKE_PROJECT_NAME} PRIVATE
@@ -82,7 +79,8 @@ set_target_properties_plugin(${CMAKE_PROJECT_NAME} PROPERTIES OUTPUT_NAME ${_nam
 
 # For CDI-plugin. Windows post build commands.
 if(WIN32)
-	set(DEST_ROOT_DIR "${OBS_DIR}/${OBS_BUILDDIR_ARCH}/rundir/$<CONFIG>")
+set(CDI_LIB_DIR "${CDI_DIR}//proj/x64/$<CONFIG>_DLL")
+set(DEST_ROOT_DIR "${OBS_DIR}/${OBS_BUILDDIR_ARCH}/rundir/$<CONFIG>")
 	set(DEST_BIN_DIR "${DEST_ROOT_DIR}/bin/${OBS_ARCH_NAME}")
 	add_custom_command(TARGET obs-cdi POST_BUILD
 

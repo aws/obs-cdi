@@ -45,6 +45,7 @@ Config::Config() :
 		config_set_default_int(obs_config, SECTION_NAME, PARAM_MAIN_OUTPUT_VIDEO_STREAM_ID, OutputVideoStreamId);
 		config_set_default_int(obs_config, SECTION_NAME, PARAM_MAIN_OUTPUT_AUDIO_STREAM_ID, OutputAudioStreamId);
 		config_set_default_int(obs_config, SECTION_NAME, PARAM_MAIN_OUTPUT_VIDEO_SAMPLING, (int)kCdiAvmVidYCbCr422);
+		config_set_default_bool(obs_config, SECTION_NAME, PARAM_MAIN_OUTPUT_ALPHA_USED, false);
 		config_set_default_int(obs_config, SECTION_NAME, PARAM_MAIN_OUTPUT_BIT_DEPTH, (int)kCdiAvmVidBitDepth10);
 	}
 }
@@ -60,6 +61,7 @@ void Config::Load() {
 		OutputVideoStreamId = config_get_int(obs_config, SECTION_NAME, PARAM_MAIN_OUTPUT_VIDEO_STREAM_ID);
 		OutputAudioStreamId = config_get_int(obs_config, SECTION_NAME, PARAM_MAIN_OUTPUT_AUDIO_STREAM_ID);
 		OutputVideoSampling = (CdiAvmVideoSampling)config_get_int(obs_config, SECTION_NAME, PARAM_MAIN_OUTPUT_VIDEO_SAMPLING);
+		OutputAlphaUsed = config_get_bool(obs_config, SECTION_NAME, PARAM_MAIN_OUTPUT_ALPHA_USED);
 		OutputBitDepth = (CdiAvmVideoBitDepth)config_get_int(obs_config, SECTION_NAME, PARAM_MAIN_OUTPUT_BIT_DEPTH);
 	}
 }
@@ -75,6 +77,7 @@ void Config::Save() {
 		config_set_int(obs_config, SECTION_NAME, PARAM_MAIN_OUTPUT_VIDEO_STREAM_ID, OutputVideoStreamId);
 		config_set_int(obs_config, SECTION_NAME, PARAM_MAIN_OUTPUT_AUDIO_STREAM_ID, OutputAudioStreamId);
 		config_set_int(obs_config, SECTION_NAME, PARAM_MAIN_OUTPUT_VIDEO_SAMPLING, (int)OutputVideoSampling);
+		config_set_bool(obs_config, SECTION_NAME, PARAM_MAIN_OUTPUT_ALPHA_USED, OutputAlphaUsed);
 		config_set_int(obs_config, SECTION_NAME, PARAM_MAIN_OUTPUT_BIT_DEPTH, (int)OutputBitDepth);
 		config_save(obs_config);
 	}

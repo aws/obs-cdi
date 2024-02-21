@@ -62,10 +62,32 @@ extern "C" {
 #define MAX_VIDEO_FRAME_SIZE        (1920*1080*4*2)
 
 // Maximum size of CDI linear receive buffer.
-#define LINEAR_RX_BUFFER_SIZE       (MAX_VIDEO_FRAME_SIZE * 10)
+#define LINEAR_RX_BUFFER_SIZE       (MAX_VIDEO_FRAME_SIZE * 20)
 
 // Maximum size of OBS audio frame (for CDI -> OBS conversion).
 #define MAX_OBS_AUDIO_FRAME_SIZE    (10*10000)
+
+// Get 5 bytes of CDI 10-bit pixel data.
+#define CDI_10_BIT_IN_5_BYTES(IN, A0, B0, C0, A1) \
+        *(A0) = ((uint16_t)*(IN++)) << 2 | *(IN) >> 6; \
+        *(B0) = ((uint16_t)*(IN++) & 0x3F) << 4 | *(IN) >> 4; \
+        *(C0) = ((uint16_t)*(IN++) & 0x0F) << 6 | *(IN) >> 2; \
+        *(A1) = ((uint16_t)*(IN++) & 0x03) << 8 | *(IN++);
+
+// Get 3 bytes of CDI 12-bit pixel data.
+#define CDI_12_BIT_IN_3_BYTES(IN, A0, B0) \
+        *A0 = (uint16_t)*(IN++) << 4 | *(IN) >> 4 & 0x0F; \
+        *B0 = (uint16_t)*(IN++) << 8 | *(IN++);
+
+// If flipping image vertically, so start reading from bottom line, otherwise
+// start at top line.
+// 
+// Note: Not sure why, but with OBS Studio's debug variant must flip the image.
+#ifdef DEBUG
+#define GET_OUTPUT_LINE() (height-1 - y)
+#else
+#define GET_OUTPUT_LINE() (y)
+#endif
 
 /**
  * @brief A structure that holds all the test settings as set from the command line.
@@ -90,7 +112,6 @@ struct TestConnectionInfo {
     /// @brief Number of payloads successfully received. NOTE: This variable is used by multiple threads and not
     /// declared volatile. It is used as an example of how to use the CdiOsAtomic...() API functions.
     uint32_t payload_received_count;
-    volatile bool payload_error;           ///< true if Rx callback got a payload error.
 
     CdiSignalType connection_state_change_signal;   ///< Signal used for connection state changes.
     volatile CdiConnectionStatus connection_status; ///< Current status of the connection.
@@ -141,6 +162,96 @@ static void TestConnectionCallback(const CdiCoreConnectionCbData* cb_data_ptr)
     CdiOsSignalSet(cdi_ptr->con_info.connection_state_change_signal);
 }
 
+static void cdi_422_8bit_to_I444(uint8_t* YUV[], uint32_t out_linesize[], int width, int height, uint8_t* payload_ptr)
+{
+    uint8_t* Y;
+    uint8_t* U;
+    uint8_t* V;
+    uint8_t* in;
+    int in_linesize = width * 2;
+
+    for (int y = 0; y < height; y++) {
+        Y = YUV[0] + (y * out_linesize[0]);
+        U = YUV[1] + (y * out_linesize[1]);
+        V = YUV[2] + (y * out_linesize[2]);
+        in = payload_ptr + (GET_OUTPUT_LINE() * in_linesize);
+
+        // 4:2:2 8-bit: CB,Y,CR,Y1 (CB = U, CR= V, Y=Y)
+        for (int i = 0; i < width; i += 2) {
+            // Process 2 pixels of 8-bit YUV data.
+            *(U++) = *(in);   // CB
+            *(U++) = *(in++); // Duplicate CB
+            *(Y++) = *(in++); // Y0
+            *(V++) = *(in);   // CR
+            *(V++) = *(in++); // Duplicate CR
+            *(Y++) = *(in++); // Y1
+        }
+    }
+}
+
+static void cdi_422_10bit_to_I444(uint8_t* YUV[], uint32_t out_linesize[], int width, int height, uint8_t* payload_ptr)
+{
+    uint8_t* Y;
+    uint8_t* U;
+    uint8_t* V;
+    uint8_t* in;
+    int in_linesize = width * 2.5;
+
+    for (int y = 0; y < height; y++) {
+        Y = YUV[0] + (y * out_linesize[0]);
+        U = YUV[1] + (y * out_linesize[1]);
+        V = YUV[2] + (y * out_linesize[2]);
+        in = payload_ptr + (GET_OUTPUT_LINE() * in_linesize);
+
+        // 4:2:2 10-bit: CB,Y0,CR,Y1 (CB = U, CR= V, Y=Y)
+        for (int x = 0; x < width; x += 2) {
+            // Get 2 pixels of 10-bit YUV data.
+            uint16_t CB, Y0, CR, Y1;
+            CDI_10_BIT_IN_5_BYTES(in, &CB, &Y0, &CR, &Y1);
+
+            // Convert to 8-bit and write out.
+            *(U++) = (uint8_t)(CB >> 2); // CB
+            *(U++) = (uint8_t)(CB >> 2); // Duplicate CB
+            *(Y++) = (uint8_t)(Y0 >> 2);
+            *(V++) = (uint8_t)(CR >> 2);
+            *(V++) = (uint8_t)(CR >> 2); // Duplicate CR
+            *(Y++) = (uint8_t)(Y0 >> 2);
+        }
+    }
+}
+
+static void cdi_422_12bit_to_I444(uint8_t* YUV[], uint32_t out_linesize[], int width, int height, uint8_t* payload_ptr)
+{
+    uint8_t* Y;
+    uint8_t* U;
+    uint8_t* V;
+    uint8_t* in;
+    int in_linesize = width * 3;
+
+    for (int y = 0; y < height; y++) {
+        Y = YUV[0] + (y * out_linesize[0]);
+        U = YUV[1] + (y * out_linesize[1]);
+        V = YUV[2] + (y * out_linesize[2]);
+        in = payload_ptr + (GET_OUTPUT_LINE() * in_linesize);
+
+        // 4:2:2 12-bit: CB,Y0,CR,Y1 (C'B = U, C'R= V, Y=Y)
+        for (int x = 0; x < width; x += 2) {
+            // Get 2 pixels of 12-bit YUV data.
+            uint16_t CB, Y0, CR, Y1;
+            CDI_12_BIT_IN_3_BYTES(in, &CB, &Y0);
+            CDI_12_BIT_IN_3_BYTES(in, &CR, &Y1);
+
+            // Convert to 8-bit and write out.
+            *(U++) = (uint8_t)(CB >> 4); // CB
+            *(U++) = (uint8_t)(CB >> 4); // Duplicate CB
+            *(Y++) = (uint8_t)(Y0 >> 4);
+            *(V++) = (uint8_t)(CR >> 4);
+            *(V++) = (uint8_t)(CR >> 4); // Duplicate CR
+            *(Y++) = (uint8_t)(Y0 >> 4);
+        }
+    }
+}
+
 /**
  * @brief Convert a CDI YCbCr 4:2:2 video frame to OBS.
  * 
@@ -156,64 +267,125 @@ static bool Cdi422ToObsVideoFrame(cdi_source* cdi_ptr, uint8_t* payload_ptr, int
 {
     bool ret = true;
     obs_source_frame* frame_ptr = &cdi_ptr->obs_video_frame;
-    uint8_t* src_ptr = payload_ptr;
+
+    frame_ptr->format = VIDEO_FORMAT_I444; // 4:4:4 8-bit 3 planes.
+
+    // Using 8-bits to hold each pixel.
+    frame_ptr->data[0] = cdi_ptr->conv_buffer; // Y
+    frame_ptr->data[1] = frame_ptr->data[0] + (config_ptr->height * config_ptr->width); // U
+    frame_ptr->data[2] = frame_ptr->data[1] + (config_ptr->height * config_ptr->width); // V
+
+    frame_ptr->linesize[0] = config_ptr->width; // Y
+    frame_ptr->linesize[1] = config_ptr->width; // U
+    frame_ptr->linesize[2] = config_ptr->width; // V
 
     // CDI YCbCr 4:2:2.
     if (kCdiAvmVidBitDepth8 == config_ptr->depth) {
-        frame_ptr->format = VIDEO_FORMAT_UYVY;
-        frame_ptr->data[0] = cdi_ptr->conv_buffer;
-        frame_ptr->linesize[0] = config_ptr->width*2;
-
-        // Flip image vertically by swapping lines, first to last and last to first.
-        int linesize = frame_ptr->linesize[0];
-        for (int i = 0; i < config_ptr->height/2; i++) {
-            uint32_t first_offset = i * linesize;
-            uint32_t last_offset = (config_ptr->height - i - 1) * linesize;
-            memcpy(cdi_ptr->conv_buffer + first_offset, src_ptr + last_offset, linesize);
-            memcpy(cdi_ptr->conv_buffer + last_offset, src_ptr + first_offset, linesize);
-        }
+        cdi_422_8bit_to_I444(frame_ptr->data, frame_ptr->linesize, config_ptr->width, config_ptr->height, payload_ptr);
     } else if (kCdiAvmVidBitDepth10 == config_ptr->depth) {
-        frame_ptr->format = VIDEO_FORMAT_I210;
-
-        // Using 16-bits to hold each 10-bit pixel.
-        frame_ptr->data[0] = cdi_ptr->conv_buffer; // Y. One Y for each frame pixel.
-        frame_ptr->data[1] = frame_ptr->data[0] + (config_ptr->height * config_ptr->width*2); // U. One U for every 2 frame pixels.
-        frame_ptr->data[2] = frame_ptr->data[1] + (config_ptr->height * config_ptr->width); // V. One V for every 2 frame pixels.
-
-        frame_ptr->linesize[0] = config_ptr->width*2; // Y
-        frame_ptr->linesize[1] = config_ptr->width; // U
-        frame_ptr->linesize[2] = config_ptr->width; // V
-
-        // Have to flip image vertically too, so start writing at last line and work to line zero.
-        for (int r = config_ptr->height - 1; r >= 0; r--) {
-            uint16_t* y_dest = (uint16_t*)(frame_ptr->data[0] + frame_ptr->linesize[0] * r);
-            uint16_t* u_dest = (uint16_t*)(frame_ptr->data[1] + frame_ptr->linesize[1] * r);
-            uint16_t* v_dest = (uint16_t*)(frame_ptr->data[2] + frame_ptr->linesize[2] * r);
-
-            // Process 5-bytes of CDI data (SMPTE ST 2110-20: 10-bit packed 4:2:2).
-            for (int i = 0; i < config_ptr->width; i += 2) {
-                uint16_t val = (uint16_t)*src_ptr << 2 | *(src_ptr+1) >> 6; // U. 512 means zero
-                *(u_dest++) = val;
-
-                val = ((uint16_t)*(src_ptr+1) << 4 | *(src_ptr+2) >> 4) & 0x3ff; // Y. 16= black, 960= white
-                *(y_dest++) = val;
-
-                val = ((uint16_t)*(src_ptr+2) << 6 | *(src_ptr+3) >> 2) & 0x3ff; // V. 512 means zero
-                *(v_dest++) = val;
-
-                val = ((uint16_t)*(src_ptr+3) << 8 | *(src_ptr+4)) & 0x3ff; // Y. 16= black, 960= white
-                *(y_dest++) = val;
-                
-                src_ptr += 5;
-            }
-        }
-    }
-    else if (kCdiAvmVidBitDepth12 == config_ptr->depth) {
-        blog(LOG_WARNING, "12-bit CDI source not supported.");
-        ret = false;
+        cdi_422_10bit_to_I444(frame_ptr->data, frame_ptr->linesize, config_ptr->width, config_ptr->height, payload_ptr);
+    } else if (kCdiAvmVidBitDepth12 == config_ptr->depth) {
+        cdi_422_12bit_to_I444(frame_ptr->data, frame_ptr->linesize, config_ptr->width, config_ptr->height, payload_ptr);
     }
 
     return ret;
+}
+
+static void cdi_444_8bit_to_I444(uint8_t* YUV[], uint32_t out_linesize[], int width, int height, uint8_t* payload_ptr)
+{
+    uint8_t* Y;
+    uint8_t* U;
+    uint8_t* V;
+    uint8_t* in;
+    int in_linesize = width * 3;
+
+    for (int y = 0; y < height; y++) {
+        Y = YUV[0] + (y *out_linesize[0]);
+        U = YUV[1] + (y *out_linesize[1]);
+        V = YUV[2] + (y * out_linesize[2]);
+        in = payload_ptr + (GET_OUTPUT_LINE() * in_linesize);
+
+        // 4:4:4 8-bit: CB,Y,CR (CB = U, CR= V, Y=Y)
+        for (int i = 0; i < width; i += 1) {
+            // Process 1 pixel of YUV data.
+            *(U++) = *(in++);
+            *(Y++) = *(in++);
+            *(V++) = *(in++);
+        }
+    }
+}
+
+static void cdi_444_10bit_to_I444(uint8_t* YUV[], uint32_t out_linesize[], int width, int height, uint8_t* payload_ptr)
+{
+    uint8_t* Y;
+    uint8_t* U;
+    uint8_t* V;
+    uint8_t* in;
+    int in_linesize = width * 3 * 10 / 8;
+
+    for (int y = 0; y < height; y++) {
+        Y = YUV[0] + (y * out_linesize[0]);
+        U = YUV[1] + (y * out_linesize[1]);
+        V = YUV[2] + (y * out_linesize[2]);
+        // Flipping image vertically, so start reading from bottom line.
+        in = payload_ptr + ((height-1 - y) * in_linesize);
+
+        // 4:4:4 10-bit: C0B,Y0,C0R,C1B,Y1,C1R,C2B,Y2,C2R,C3B,Y3,C3R (CB = U, CR= V, Y=Y)
+        for (int x = 0; x < width; x += 4) {
+            // Get 4 pixels of 10-bit YUV data.
+            uint16_t C0B, C1B, C2B, C3B, Y0, Y1, Y2, Y3, C0R, C1R, C2R, C3R;
+            CDI_10_BIT_IN_5_BYTES(in, &C0B, &Y0, &C0R, &C1B);
+            CDI_10_BIT_IN_5_BYTES(in, &Y1, &C1R, &C2B, &Y2);
+            CDI_10_BIT_IN_5_BYTES(in, &C2R, &C3B, &Y3, &C3R);
+
+            // Convert to 8-bit and write out.
+            *(U++) = (uint8_t)(C0B >> 2);
+            *(U++) = (uint8_t)(C1B >> 2);
+            *(U++) = (uint8_t)(C2B >> 2);
+            *(U++) = (uint8_t)(C3B >> 2);
+            *(Y++) = (uint8_t)(Y0 >> 2);
+            *(Y++) = (uint8_t)(Y1 >> 2);
+            *(Y++) = (uint8_t)(Y2 >> 2);
+            *(Y++) = (uint8_t)(Y3 >> 2);
+            *(V++) = (uint8_t)(C0R >> 2);
+            *(V++) = (uint8_t)(C1R >> 2);
+            *(V++) = (uint8_t)(C2R >> 2);
+            *(V++) = (uint8_t)(C3R >> 2);
+        }
+    }
+}
+
+static void cdi_444_12bit_to_I444(uint8_t* YUV[], uint32_t out_linesize[], int width, int height, uint8_t* payload_ptr)
+{
+    uint8_t* Y;
+    uint8_t* U;
+    uint8_t* V;
+    uint8_t* in;
+    int in_linesize = width * 3 * 12 / 8;
+
+    for (int y = 0; y < height; y++) {
+        Y = YUV[0] + (y * out_linesize[0]);
+        U = YUV[1] + (y * out_linesize[1]);
+        V = YUV[2] + (y * out_linesize[2]);
+        in = payload_ptr + (GET_OUTPUT_LINE() * in_linesize);
+
+        // 4:4:4 12-bit: C0B,Y0,C0R,C1B,Y1,C1R (CB = U, CR= V, Y=Y)
+        for (int x = 0; x < width; x += 2) {
+            // Get 2 pixels of 12s-bit YUV data.
+            uint16_t C0B, C1B, Y0, Y1, C0R, C1R;
+            CDI_12_BIT_IN_3_BYTES(in, &C0B, &Y0);
+            CDI_12_BIT_IN_3_BYTES(in, &C0R, &C1B);
+            CDI_12_BIT_IN_3_BYTES(in, &Y1, &C1R);
+
+            // Convert to 8-bit and write out.
+            *(U++) = (uint8_t)(C0B >> 4);
+            *(U++) = (uint8_t)(C1B >> 4);
+            *(Y++) = (uint8_t)(Y0 >> 4);
+            *(Y++) = (uint8_t)(Y1 >> 4);
+            *(V++) = (uint8_t)(C0R >> 4);
+            *(V++) = (uint8_t)(C1R >> 4);
+        }
+    }
 }
 
 /**
@@ -230,12 +402,179 @@ static bool Cdi422ToObsVideoFrame(cdi_source* cdi_ptr, uint8_t* payload_ptr, int
 static bool Cdi444ToObsVideoFrame(cdi_source* cdi_ptr, uint8_t* payload_ptr, int payload_size, CdiAvmVideoConfig* config_ptr)
 {
     bool ret = true;
+    obs_source_frame* frame_ptr = &cdi_ptr->obs_video_frame;
 
-    // TODO: Add logic here.
-    blog(LOG_WARNING, "YCbCr 4:4:4 CDI source not supported.");
-    ret = false;
+    frame_ptr->format = VIDEO_FORMAT_I444; // 4:4:4 8-bit 3 planes.
+
+    // Using 16-bits to hold each pixel.
+    frame_ptr->data[0] = cdi_ptr->conv_buffer; // Y
+    frame_ptr->data[1] = frame_ptr->data[0] + (config_ptr->height * config_ptr->width*2); // U
+    frame_ptr->data[2] = frame_ptr->data[1] + (config_ptr->height * config_ptr->width*2); // V
+
+    frame_ptr->linesize[0] = config_ptr->width; // Y
+    frame_ptr->linesize[1] = config_ptr->width; // U
+    frame_ptr->linesize[2] = config_ptr->width; // V
+
+    if (kCdiAvmVidBitDepth8 == config_ptr->depth) {
+        cdi_444_8bit_to_I444(frame_ptr->data, frame_ptr->linesize, config_ptr->width, config_ptr->height, payload_ptr);
+    } else if (kCdiAvmVidBitDepth10 == config_ptr->depth) {
+        cdi_444_10bit_to_I444(frame_ptr->data, frame_ptr->linesize, config_ptr->width, config_ptr->height, payload_ptr);
+    } else if (kCdiAvmVidBitDepth12 == config_ptr->depth) {
+        cdi_444_12bit_to_I444(frame_ptr->data, frame_ptr->linesize, config_ptr->width, config_ptr->height, payload_ptr);
+    }
 
     return ret;
+}
+
+static void cdi_rgb_to_rgba_8bit(uint8_t* BGRA[], uint32_t out_linesize[], int width, int height, uint8_t* payload_ptr, bool alpha_used)
+{
+    uint8_t* out;
+    uint8_t* in;
+    int in_linesize = width * 3;
+
+    for (int y = 0; y < height; y++) {
+        out = BGRA[0] + (y * out_linesize[0]);
+        in = payload_ptr + (GET_OUTPUT_LINE() * in_linesize);
+
+        // RGB 8-bit: R, G, B
+        for (int x = 0; x < width; x += 1) {
+            // Process 1 pixel of RGB data.
+            *(out++) = *(in++); // R
+            *(out++) = *(in++); // G
+            *(out++) = *(in++); // B
+            *(out++) = 0xFF; // Write 0xff for alpha
+        }
+    }
+
+    if (alpha_used) {
+        int in_offset = height * in_linesize;
+        int a_in_linesize = width; // Linesize for CDI alpha.
+        uint8_t* A;
+            for (int y = 0; y < height; y++) {
+            A = BGRA[0] + (y * out_linesize[0] + 3); // BGRA format, so A is + 3.
+            in = payload_ptr + in_offset + (GET_OUTPUT_LINE() * a_in_linesize);
+
+            // Since CDI alpha only uses one plane, we process 1 alpha values at a time.
+            for (int x = 0; x < width; x += 1) {
+                *(A) = *(in++); // A
+                A += 4; // Alpha is every 4 bytes.
+            }
+        }
+    }
+}
+
+static void cdi_rgb_to_rgba_10bit(uint8_t* BGRA[], uint32_t out_linesize[], int width, int height, uint8_t* payload_ptr, bool alpha_used)
+{
+    uint8_t* out;
+    uint8_t* in;
+    int in_linesize = width * 3 * 10 / 8;
+
+    for (int y = 0; y < height; y++) {
+        out = BGRA[0] + (y * out_linesize[0]);
+        in = payload_ptr + (GET_OUTPUT_LINE() * in_linesize);
+
+        // RGB 10-bit: R0, G0, B0, R1, G1, B1, R2, G2, B2, R3, G3, B3
+        for (int x = 0; x < width; x += 4) {
+            // Get 4 pixels of 10-bit RGB data.
+            uint16_t B0, G0, R0, B1, G1, R1, B2, G2, R2, B3, G3, R3;
+            CDI_10_BIT_IN_5_BYTES(in, &R0, &G0, &B0, &R1);
+            CDI_10_BIT_IN_5_BYTES(in, &G1, &B1, &R2, &G2);
+            CDI_10_BIT_IN_5_BYTES(in, &B2, &R3, &G3, &B3);
+
+            // Convert to 8-bit and write out in BGRA order.
+            *(out++) = (uint8_t)(B0 >> 2);
+            *(out++) = (uint8_t)(G0 >> 2);
+            *(out++) = (uint8_t)(R0 >> 2);
+            *(out++) = 0xFF; // Write 0xff for alpha
+            *(out++) = (uint8_t)(B1 >> 2);
+            *(out++) = (uint8_t)(G1 >> 2);
+            *(out++) = (uint8_t)(R1 >> 2);
+            *(out++) = 0xFF; // Write 0xff for alpha
+            *(out++) = (uint8_t)(B2 >> 2);
+            *(out++) = (uint8_t)(G2 >> 2);
+            *(out++) = (uint8_t)(R2 >> 2);
+            *(out++) = 0xFF; // Write 0xff for alpha
+            *(out++) = (uint8_t)(B3 >> 2);
+            *(out++) = (uint8_t)(G3 >> 2);
+            *(out++) = (uint8_t)(R3 >> 2);
+            *(out++) = 0xFF; // Write 0xff for alpha
+        }
+    }
+
+    if (alpha_used) {
+        int in_offset = height * in_linesize;
+        int a_in_linesize = width * 10 / 8; // Linesize for CDI alpha.
+        uint8_t* A;
+        for (int y = 0; y < height; y++) {
+            A = BGRA[0] + (y * out_linesize[0] + 3); // BGRA format, so A is + 3.
+            in = payload_ptr + in_offset + (GET_OUTPUT_LINE() * a_in_linesize);
+
+            // Since CDI alpha only uses one plane, we can process 4 alpha values at a time.
+            for (int x = 0; x < width; x += 4) {
+                uint16_t A0, A1, A2, A3;
+                CDI_10_BIT_IN_5_BYTES(in, &A0, &A1, &A2, &A3);
+                *(A) = (uint8_t)(A0 >> 2); // A
+                A += 4; // Alpha is every 4 bytes.
+                *(A) = (uint8_t)(A1 >> 2);
+                A += 4;
+                *(A) = (uint8_t)(A2 >> 2);
+                A += 4;
+                *(A) = (uint8_t)(A3 >> 2);
+                A += 4;
+            }
+        }
+    }
+}
+
+static void cdi_rgb_to_rgba_12bit(uint8_t* BGRA[], uint32_t out_linesize[], int width, int height, uint8_t* payload_ptr, bool alpha_used)
+{
+    uint8_t* out;
+    uint8_t* in;
+    int in_linesize = width * 3 * 12 / 8;
+
+    for (int y = 0; y < height; y++) {
+        out = BGRA[0] + (y * out_linesize[0]);
+        in = payload_ptr + (GET_OUTPUT_LINE() * in_linesize);
+
+        // RGB 12-bit: R0, G0, B0, R1, G1, B1
+        for (int x = 0; x < width; x += 2) {
+            // Get 2 pixels of 12-bit RGB data.
+            uint16_t B0, G0, R0, B1, G1, R1;
+            CDI_12_BIT_IN_3_BYTES(in, &R0, &G0);
+            CDI_12_BIT_IN_3_BYTES(in, &B0, &R1);
+            CDI_12_BIT_IN_3_BYTES(in, &G1, &B1);
+
+            // Convert to 8-bit and write out in BGRA order.
+            *(out++) = (uint8_t)(B0 >> 4);
+            *(out++) = (uint8_t)(G0 >> 4);
+            *(out++) = (uint8_t)(R0 >> 4);
+            *(out++) = 0xFF; // Write 0xff for alpha
+            *(out++) = (uint8_t)(B1 >> 4);
+            *(out++) = (uint8_t)(G1 >> 4);
+            *(out++) = (uint8_t)(R1 >> 4);
+            *(out++) = 0xFF; // Write 0xff for alpha
+        }
+    }
+
+    if (alpha_used) {
+        int in_offset = height * in_linesize;
+        int a_in_linesize = width * 12 / 8; // Linesize for CDI alpha.
+        uint8_t* A;
+        for (int y = 0; y < height; y++) {
+            A = BGRA[0] + (y * out_linesize[0] + 3); // BGRA format, so A is + 3.
+            in = payload_ptr + in_offset + (GET_OUTPUT_LINE() * a_in_linesize);
+
+            // Since CDI alpha only uses one plane, we can process 2 alpha values at a time.
+            for (int x = 0; x < width; x += 2) {
+                uint16_t A0, A1;
+                CDI_12_BIT_IN_3_BYTES(in, &A0, &A1);
+                *(A) = (uint8_t)(A0 >> 4); // A
+                A += 4; // Alpha is every 4 bytes.
+                *(A) = (uint8_t)(A1 >> 4);
+                A += 4;
+            }
+        }
+    }
 }
 
 /**
@@ -252,10 +591,23 @@ static bool Cdi444ToObsVideoFrame(cdi_source* cdi_ptr, uint8_t* payload_ptr, int
 static bool CdiRgbToObsVideoFrame(cdi_source* cdi_ptr, uint8_t* payload_ptr, int payload_size, CdiAvmVideoConfig* config_ptr)
 {
     bool ret = true;
+    bool alpha_used = (kCdiAvmAlphaUsed == config_ptr->alpha_channel);
+    int width = config_ptr->width;
 
-    // TODO: Add logic here.
-    blog(LOG_WARNING, "RGB CDI source not supported.");
-    ret = false;
+    obs_source_frame* frame_ptr = &cdi_ptr->obs_video_frame;
+    frame_ptr->format = VIDEO_FORMAT_BGRA; // OBS Studio supports this output format, so we will use it here too.
+
+    // Using 8-bits to hold each RGBA pixel.
+    frame_ptr->data[0] = cdi_ptr->conv_buffer;
+    frame_ptr->linesize[0] = config_ptr->width * 4;
+
+    if (kCdiAvmVidBitDepth8 == config_ptr->depth) {
+        cdi_rgb_to_rgba_8bit(frame_ptr->data, frame_ptr->linesize, config_ptr->width, config_ptr->height, payload_ptr, alpha_used);
+    } else if (kCdiAvmVidBitDepth10 == config_ptr->depth) {
+        cdi_rgb_to_rgba_10bit(frame_ptr->data, frame_ptr->linesize, config_ptr->width, config_ptr->height, payload_ptr, alpha_used);
+    } else if (kCdiAvmVidBitDepth12 == config_ptr->depth) {
+        cdi_rgb_to_rgba_12bit(frame_ptr->data, frame_ptr->linesize, config_ptr->width, config_ptr->height, payload_ptr, alpha_used);
+    }
 
     return ret;
 }
@@ -281,6 +633,9 @@ static void ProcessVideoFrame(cdi_source* cdi_ptr, uint8_t* payload_ptr, int pay
     video_colorspace colorspace = VIDEO_CS_709;
     if (kCdiAvmVidColorimetryBT601 == config_ptr->colorimetry) {
         colorspace = VIDEO_CS_601;
+    }
+    else if (kCdiAvmVidColorimetryBT2100 == config_ptr->colorimetry) {
+        colorspace = VIDEO_CS_2100_PQ;
     }
 
     video_range_type range = VIDEO_RANGE_FULL;

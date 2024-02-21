@@ -28,7 +28,7 @@ OutputSettings::OutputSettings(QWidget *parent) :
 	connect(ui->buttonBox, SIGNAL(accepted()), this, SLOT(onFormAccepted()));
 
 	ui->cdiVersionLabel->setText("OBS CDI plugin " OBS_CDI_VERSION);
-	ui->cdiNotesLabel->setText("Requires I444 Color and Stereo Audio. Set accordingly in Settings.");
+	ui->cdiNotesLabel->setText("Requires I444 or RGBA Color. Set accordingly in Settings.");
 
 	ui->mainComboBoxVideoSampling->addItem("YCbCr 4:4:4", (int)kCdiAvmVidYCbCr444);
 	ui->mainComboBoxVideoSampling->addItem("YCbCr 4:2:2", (int)kCdiAvmVidYCbCr444);
@@ -47,21 +47,14 @@ void OutputSettings::UpdateControls()
 	bool not_supported = false;
 
 	switch (conf->OutputVideoSampling) {
-		case kCdiAvmVidYCbCr444:
-			not_supported = true;
-			ui->mainCheckBoxAlphaUsed->setEnabled(false);
-		break;
 		case kCdiAvmVidYCbCr422:
+		case kCdiAvmVidYCbCr444:
 			ui->mainCheckBoxAlphaUsed->setEnabled(false);
-			if (kCdiAvmVidBitDepth12 == conf->OutputBitDepth) {
-				not_supported = true;
-			} else {
-				ui->cdiNotesLabel->setText("Requires I444 Color and Stereo Audio. Set accordingly in Settings.");
-			}
+			ui->cdiNotesLabel->setText("Requires I444 Color. Set accordingly in Settings.");
 		break;
 		case kCdiAvmVidRGB:
 			ui->mainCheckBoxAlphaUsed->setEnabled(true);
-			not_supported = true;
+			ui->cdiNotesLabel->setText("Requires RGBA Color. Set accordingly in Settings.");
 		break;
 	}
 
@@ -97,6 +90,7 @@ void OutputSettings::onFormAccepted() {
 	conf->OutputVideoStreamId = ui->mainVideoStreamId->text().toInt();
 	conf->OutputAudioStreamId = ui->mainAudioStreamId->text().toInt();
 	conf->OutputVideoSampling = (CdiAvmVideoSampling)ui->mainComboBoxVideoSampling->currentIndex();
+	conf->OutputAlphaUsed = ui->mainCheckBoxAlphaUsed->isChecked();
 	conf->OutputBitDepth = (CdiAvmVideoBitDepth)ui->mainComboBoxBitDepth->currentIndex();
 
 	conf->Save();
@@ -122,6 +116,7 @@ void OutputSettings::showEvent(QShowEvent* event) {
 	ui->mainVideoStreamId->setText(QString::number(conf->OutputVideoStreamId));
 	ui->mainAudioStreamId->setText(QString::number(conf->OutputAudioStreamId));
 	ui->mainComboBoxVideoSampling->setCurrentIndex(conf->OutputVideoSampling);
+	ui->mainCheckBoxAlphaUsed->setChecked(conf->OutputAlphaUsed);
 	ui->mainComboBoxBitDepth->setCurrentIndex(conf->OutputBitDepth);
 }
 

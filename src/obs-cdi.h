@@ -27,7 +27,7 @@ extern "C" {
 /// @brief Number of bytes in CDI audio sample. CDI requests 24-bit int for audio, so needs three bytes.
 #define CDI_BYTES_PER_AUDIO_SAMPLE              (3)
 
-#define MAX_PAYLOAD_SIZE								(1920*1080*3)
+#define MAX_PAYLOAD_SIZE								(1920*1080*4*12/8)
 #define CDI_MAX_SIMULTANEOUS_TX_PAYLOADS_PER_CONNECTION (8)
 #define MAX_NUMBER_OF_TX_PAYLOADS						(CDI_MAX_SIMULTANEOUS_TX_PAYLOADS_PER_CONNECTION + 1)
 
