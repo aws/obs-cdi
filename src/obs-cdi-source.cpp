@@ -54,9 +54,10 @@ extern "C" {
 //***************************************** START OF DEFINITIONS AND TYPES ********************************************
 //*********************************************************************************************************************
 
-#define PROP_LOCAL_IP   "local_ip"
-#define PROP_PORT       "listen_port"
-#define PROP_AUDIO      "audio_enable"
+#define PROP_LOCAL_IP       "local_ip"
+#define PROP_LOCAL_BIND_IP  "local_bind_ip"
+#define PROP_PORT           "listen_port"
+#define PROP_AUDIO          "audio_enable"
 
 // Maximum size is 1920x1080, 4 color planes (RGB has alpha), 16-bit pixel size.
 #define MAX_VIDEO_FRAME_SIZE        (1920*1080*4*2)
@@ -76,8 +77,8 @@ extern "C" {
 
 // Get 3 bytes of CDI 12-bit pixel data.
 #define CDI_12_BIT_IN_3_BYTES(IN, A0, B0) \
-        *A0 = (uint16_t)*(IN++) << 4 | *(IN) >> 4 & 0x0F; \
-        *B0 = (uint16_t)*(IN++) << 8 | *(IN++);
+        *A0 = ((uint16_t)*(IN++) << 4) | (*(IN) >> 4 & 0x0F); \
+        *B0 = ((uint16_t)*(IN++) << 8) | *(IN++);
 
 // If flipping image vertically, so start reading from bottom line, otherwise
 // start at top line.
@@ -195,7 +196,7 @@ static void cdi_422_10bit_to_I444(uint8_t* YUV[], uint32_t out_linesize[], int w
     uint8_t* U;
     uint8_t* V;
     uint8_t* in;
-    int in_linesize = width * 2.5;
+    int in_linesize = width * 2 + (width / 2); // * 2.5
 
     for (int y = 0; y < height; y++) {
         Y = YUV[0] + (y * out_linesize[0]);
@@ -265,6 +266,7 @@ static void cdi_422_12bit_to_I444(uint8_t* YUV[], uint32_t out_linesize[], int w
  */
 static bool Cdi422ToObsVideoFrame(cdi_source* cdi_ptr, uint8_t* payload_ptr, int payload_size, CdiAvmVideoConfig* config_ptr)
 {
+    (void)payload_size;
     bool ret = true;
     obs_source_frame* frame_ptr = &cdi_ptr->obs_video_frame;
 
@@ -401,6 +403,7 @@ static void cdi_444_12bit_to_I444(uint8_t* YUV[], uint32_t out_linesize[], int w
  */
 static bool Cdi444ToObsVideoFrame(cdi_source* cdi_ptr, uint8_t* payload_ptr, int payload_size, CdiAvmVideoConfig* config_ptr)
 {
+    (void)payload_size;
     bool ret = true;
     obs_source_frame* frame_ptr = &cdi_ptr->obs_video_frame;
 
@@ -590,9 +593,9 @@ static void cdi_rgb_to_rgba_12bit(uint8_t* BGRA[], uint32_t out_linesize[], int 
  */
 static bool CdiRgbToObsVideoFrame(cdi_source* cdi_ptr, uint8_t* payload_ptr, int payload_size, CdiAvmVideoConfig* config_ptr)
 {
+    (void)payload_size;
     bool ret = true;
     bool alpha_used = (kCdiAvmAlphaUsed == config_ptr->alpha_channel);
-    int width = config_ptr->width;
 
     obs_source_frame* frame_ptr = &cdi_ptr->obs_video_frame;
     frame_ptr->format = VIDEO_FORMAT_BGRA; // OBS Studio supports this output format, so we will use it here too.
@@ -730,9 +733,10 @@ static void ProcessAudioFrame(cdi_source* cdi_ptr, void* payload_ptr, int payloa
     assert(payload_size <= num_channels * num_samples_per_channel * CDI_BYTES_PER_AUDIO_SAMPLE);
 
     int ndi_audio_size = num_channels * num_samples_per_channel * sizeof(float);
+    (void)ndi_audio_size; // suppress compiler warning for release build.
 
     // Validate that the NDI buffer is large enough to hold the NDI float audio samples.
-    assert(ndi_audio_size <= sizeof(cdi_ptr->obs_audio_buffer));
+    assert(ndi_audio_size <= (int)sizeof(cdi_ptr->obs_audio_buffer));
 
     uint8_t* ndi_audio_byte_ptr = cdi_ptr->obs_audio_buffer;
     const uint8_t* cdi_audio_ptr = (uint8_t*)payload_ptr;
@@ -755,8 +759,8 @@ static void ProcessAudioFrame(cdi_source* cdi_ptr, void* payload_ptr, int payloa
             signed int scaled_signed_int = (interleaved_src_ptr[0] << 24) | (interleaved_src_ptr[1] << 16) |
                                            (interleaved_src_ptr[2] << 8);
             double scaled_double = (double)scaled_signed_int;
-            float sample_float = scaled_double / 0x7fffffff;
-            sample_float = max(-1.0, min(1.0, sample_float));
+            float sample_float = (float)(scaled_double / 0x7fffffff);
+            sample_float = (float)(MAX(-1.0, MIN(1.0, sample_float)));
             *channel_dest_ptr = sample_float;
 
             // Moves NDI audio memory location for next 32-bit float.
@@ -874,7 +878,10 @@ static bool SourceCreate(cdi_source* cdi_ptr)
         CdiRxConfigData config_data = { 0 };
         config_data.adapter_handle = adapter_handle;
         config_data.dest_port = cdi_ptr->con_info.test_settings.dest_port;
-        config_data.bind_ip_addr_str = cdi_ptr->con_info.test_settings.bind_ip_str;
+        if (cdi_ptr->con_info.test_settings.bind_ip_str && '\0' != cdi_ptr->con_info.test_settings.bind_ip_str[0]) {
+            // Only set bind_ip_addr_str if it contains a string.
+            config_data.bind_ip_addr_str = cdi_ptr->con_info.test_settings.bind_ip_str;
+        }
         config_data.thread_core_num = -1; // -1= Let OS decide which CPU core to use.
         config_data.rx_buffer_type = kCdiLinearBuffer;
         config_data.linear_buffer_size = LINEAR_RX_BUFFER_SIZE;
@@ -929,7 +936,7 @@ void cdi_source_destroy(void* data)
  */
 const char* cdi_source_getname(void*)
 {
-	return obs_module_text("CDIPlugin.CDISourceName");
+	return obs_module_text("CDIPlugin.SourceName");
 }
 
 /**
@@ -942,11 +949,12 @@ obs_properties_t* cdi_source_getproperties(void*)
     obs_properties_t* props = obs_properties_create();
 
     obs_properties_add_text(props, PROP_LOCAL_IP, obs_module_text("CDIPlugin.SourceProps.LocalIP"), OBS_TEXT_DEFAULT);
+    obs_properties_add_text(props, PROP_LOCAL_BIND_IP, obs_module_text("CDIPlugin.SourceProps.LocalBindIP"), OBS_TEXT_DEFAULT);
     obs_properties_add_text(props, PROP_PORT, obs_module_text("CDIPlugin.SourceProps.Port"), OBS_TEXT_DEFAULT);
 	obs_properties_add_bool(props, PROP_AUDIO, obs_module_text("CDIPlugin.SourceProps.Audio"));
 
     obs_properties_add_text(props, "Information", "OBS CDI plugin " OBS_CDI_VERSION "\n"
-        "Supported CDI sources are 4:2:2, 8 and 10-bit. Audio supports up to 8 channels.", OBS_TEXT_INFO);
+        "Supports all CDI progressive sources. Audio supports up to 8 channels.", OBS_TEXT_INFO);
 
     return props;
 }
@@ -960,6 +968,7 @@ void cdi_source_getdefaults(obs_data_t *settings)
 {
     obs_data_set_default_string(settings, "cdi_name", "obs-cdi source");
     obs_data_set_default_string(settings, PROP_LOCAL_IP, "127.0.0.1");
+    obs_data_set_default_string(settings, PROP_LOCAL_BIND_IP, "");
     obs_data_set_default_string(settings, PROP_PORT, "5000");
     obs_data_set_default_bool(settings, PROP_AUDIO, true);
 }
@@ -975,9 +984,10 @@ void cdi_source_update(void *data, obs_data_t *settings)
 	cdi_source* cdi_ptr = (cdi_source*)data;
 	auto obs_source = cdi_ptr->obs_source;
 	auto name = obs_source_get_name(obs_source);
+    (void)name;
 
     cdi_ptr->con_info.test_settings.local_adapter_ip_str = obs_data_get_string(settings, PROP_LOCAL_IP);
-    cdi_ptr->con_info.test_settings.bind_ip_str = obs_data_get_string(settings, PROP_LOCAL_IP); // Use same IP for bind
+    cdi_ptr->con_info.test_settings.bind_ip_str = obs_data_get_string(settings, PROP_LOCAL_BIND_IP);
     cdi_ptr->con_info.test_settings.dest_port = atoi(obs_data_get_string(settings, PROP_PORT));
 	cdi_ptr->config.audio_enabled = obs_data_get_bool(settings, PROP_AUDIO);
 	obs_source_set_audio_active(obs_source, cdi_ptr->config.audio_enabled);
@@ -994,6 +1004,7 @@ void cdi_source_activated(void *data)
 {
 	cdi_source* cdi_ptr = (cdi_source*)data;
 	auto name = obs_source_get_name(cdi_ptr->obs_source);
+    (void)name;
 }
 
 /**
@@ -1005,6 +1016,7 @@ void cdi_source_deactivated(void *data)
 {
 	cdi_source* cdi_ptr = (cdi_source*)data;
 	auto name = obs_source_get_name(cdi_ptr->obs_source);
+    (void)name;
 }
 
 /**

@@ -161,11 +161,11 @@ bool obs_module_load(void)
 		menu_action->connect(menu_action, &QAction::triggered, menu_cb);
 
 		obs_frontend_add_event_callback([](enum obs_frontend_event event, void* private_data) {
-			Config* conf = (Config*)private_data;
+			Config* confcb = (Config*)private_data;
 
 			if (event == OBS_FRONTEND_EVENT_FINISHED_LOADING) {
-				if (conf->OutputEnabled) {
-					main_output_start(conf->OutputName.toUtf8().constData());
+				if (confcb->OutputEnabled) {
+					main_output_start(confcb->OutputName.toUtf8().constData());
 				}
 
 			}

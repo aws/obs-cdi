@@ -26,9 +26,8 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <stdbool.h>
-#include "config.h"
+#include "Config.h"
 #include "obs-frontend-api.h"
-#include "config.h"
 #include <util/config-file.h>
 #include <algorithm>
 #include <mutex>
@@ -202,7 +201,7 @@ static void TestAvmTxCallback(const CdiAvmTxCbData* cb_data_ptr)
 {
     TestTxUserData* user_data_ptr = (TestTxUserData*)cb_data_ptr->core_cb_data.user_cb_param;
 
-    int count = CdiOsAtomicInc32(&user_data_ptr->cdi_ptr->con_info.payload_cb_count);
+    CdiOsAtomicInc32(&user_data_ptr->cdi_ptr->con_info.payload_cb_count);
 
     if (kCdiStatusOk != cb_data_ptr->core_cb_data.status_code) {
         blog(LOG_ERROR, "Send payload failed[%s].",	CdiCoreStatusToString(cb_data_ptr->core_cb_data.status_code));
@@ -215,7 +214,7 @@ static void TestAvmTxCallback(const CdiAvmTxCbData* cb_data_ptr)
 /**
  * Creates the CDI video configuration structure to use when sending AVM video payloads.
  *
- * @param connection_info_ptr Pointer to a structure containing user settings needed for the configuration.
+ * @param connection_info_ptr Pointer to a structure containing user settings needed for the configuration. 
  * @param avm_config_ptr Address of where to write the generated generic configuration structure.
  * @param payload_unit_size_ptr Pointer to the location into which the payload unit size is to be written. This value
  *                              needs to be set in payload_config_ptr->core_config_data.unit_size for calls to
@@ -268,7 +267,6 @@ static CdiReturnStatus MakeVideoConfig(const TestConnectionInfo* connection_info
 /**
  * Creates the CDI audio configuration structure to use when sending AVM audio payloads.
  *
- * @param connection_info_ptr Pointer to a structure containing user settings needed for the configuration.
  * @param avm_config_ptr Address of where to write the generated generic configuration structure.
  * @param payload_unit_size_ptr Pointer to the location into which the payload unit size is to be written. This value
  *                              needs to be set in payload_config_ptr->core_config_data.unit_size for calls to
@@ -277,8 +275,7 @@ static CdiReturnStatus MakeVideoConfig(const TestConnectionInfo* connection_info
  *
  * @return CdiReturnStatus kCdiStatusOk if the configuration structure was created successfully, kCdiStatusFatal if not.
  */
-static CdiReturnStatus MakeAudioConfig(const TestConnectionInfo* connection_info_ptr, CdiAvmConfig* avm_config_ptr,
-                                       int* payload_unit_size_ptr, audio_t* audio_ptr)
+static CdiReturnStatus MakeAudioConfig(CdiAvmConfig* avm_config_ptr, int* payload_unit_size_ptr, audio_t* audio_ptr)
 {
     CdiReturnStatus rs = kCdiStatusOk;
 
@@ -347,7 +344,7 @@ static bool SendAvmPayload(TestTxUserData* user_data_ptr, CdiPtpTimestamp* times
     payload_config.core_config_data.core_extra_data.origination_ptp_timestamp = *timestamp_ptr;
     payload_config.core_config_data.user_cb_param = user_data_ptr;
     payload_config.core_config_data.unit_size = unit_size;
-    payload_config.avm_extra_data.stream_identifier = stream_identifier;
+    payload_config.avm_extra_data.stream_identifier = (uint16_t)stream_identifier;
 
     // Send the payload, retrying if the queue is full.
     do {
@@ -424,12 +421,12 @@ bool cdi_output_start(void* data)
 
     // Use those settings to populate our con_info.
     cdi_ptr->con_info.test_settings.local_adapter_ip_str = config_get_string(obs_config, SECTION_NAME, PARAM_MAIN_OUTPUT_IP);
-    cdi_ptr->con_info.test_settings.dest_port = config_get_int(obs_config, SECTION_NAME, PARAM_MAIN_OUTPUT_PORT);
+    cdi_ptr->con_info.test_settings.dest_port = (int)config_get_int(obs_config, SECTION_NAME, PARAM_MAIN_OUTPUT_PORT);
     cdi_ptr->con_info.test_settings.remote_adapter_ip_str = config_get_string(obs_config, SECTION_NAME, PARAM_MAIN_OUTPUT_DEST);
     cdi_ptr->con_info.test_settings.tx_timeout = DEFAULT_TIMEOUT;
 
-    cdi_ptr->con_info.test_settings.video_stream_id = config_get_int(obs_config, SECTION_NAME, PARAM_MAIN_OUTPUT_VIDEO_STREAM_ID);
-    cdi_ptr->con_info.test_settings.audio_stream_id = config_get_int(obs_config, SECTION_NAME, PARAM_MAIN_OUTPUT_AUDIO_STREAM_ID);
+    cdi_ptr->con_info.test_settings.video_stream_id = (int)config_get_int(obs_config, SECTION_NAME, PARAM_MAIN_OUTPUT_VIDEO_STREAM_ID);
+    cdi_ptr->con_info.test_settings.audio_stream_id = (int)config_get_int(obs_config, SECTION_NAME, PARAM_MAIN_OUTPUT_AUDIO_STREAM_ID);
     cdi_ptr->con_info.test_settings.video_sampling = (CdiAvmVideoSampling)config_get_int(obs_config, SECTION_NAME, PARAM_MAIN_OUTPUT_VIDEO_SAMPLING);
     cdi_ptr->con_info.test_settings.alpha_used = config_get_bool(obs_config, SECTION_NAME, PARAM_MAIN_OUTPUT_ALPHA_USED);
     cdi_ptr->con_info.test_settings.bit_depth = (CdiAvmVideoBitDepth)config_get_int(obs_config, SECTION_NAME, PARAM_MAIN_OUTPUT_BIT_DEPTH);
@@ -474,7 +471,7 @@ bool cdi_output_start(void* data)
         MakeVideoConfig(&cdi_ptr->con_info, &cdi_ptr->avm_video_config, &cdi_ptr->video_unit_size, video);
     }
     if (audio) {
-        MakeAudioConfig(&cdi_ptr->con_info, &cdi_ptr->avm_audio_config, &cdi_ptr->audio_unit_size, audio);
+        MakeAudioConfig(&cdi_ptr->avm_audio_config, &cdi_ptr->audio_unit_size, audio);
     }
 
     CdiOsSignalCreate(&cdi_ptr->con_info.connection_state_change_signal);
@@ -552,6 +549,7 @@ bool cdi_output_start(void* data)
  */
 void cdi_output_stop(void* data, uint64_t ts)
 {
+    (void)ts;
     cdi_output* cdi_ptr = (cdi_output*)data;
 
 	std::lock_guard<std::mutex> guard(cdi_ptr->connection_mutex);
@@ -672,7 +670,7 @@ static void i444_to_cdi_422_10bit(uint8_t* YUV[], uint32_t in_linesize[], int wi
     uint8_t* U;
     uint8_t* V;
     uint8_t* out;
-    int out_linesize = width * 2.5;
+    int out_linesize = width * 2 + (width / 2); // * 2.5
 
     for (int y = 0; y < height; y++) {
         Y = YUV[0] + (y * in_linesize[0]);
@@ -1183,8 +1181,8 @@ void cdi_output_rawvideo(void* data, struct video_data* frame)
         CdiPtpTimestamp timestamp;
 
         //make a properly paced timestamp
-        timestamp.seconds = floor(frame->timestamp / 1000000000);
-        timestamp.nanoseconds = frame->timestamp - (timestamp.seconds * 1000000000);
+        timestamp.seconds = (uint32_t)floor(frame->timestamp / 1000000000);
+        timestamp.nanoseconds = (uint32_t)(frame->timestamp - (timestamp.seconds * 1000000000));
 
         // Send the video payload.
         if (!SendAvmPayload(user_data_ptr, &timestamp, &cdi_ptr->avm_video_config, cdi_ptr->video_unit_size,
@@ -1244,7 +1242,7 @@ void cdi_output_rawaudio(void* data, struct audio_data* frame)
             // 4 byte sample is a frequency wave constrained to [-1, 1].
             // Code ensures sample is in range, but will pick sample frequency to scale up.
             // Scaled sample will make a large number where most significant bits are no longer in decimal place.
-            double scaled_double = max(-1.0, min(1.0, sample_float)) * 0x7fffffff;
+            double scaled_double = MAX(-1.0, MIN(1.0, sample_float)) * 0x7fffffff;
             // Get integer portion of large number.
             // Integer portion now represents audio frequency.
             signed int scaled_signed_int = (signed int)scaled_double;
@@ -1270,8 +1268,8 @@ void cdi_output_rawaudio(void* data, struct audio_data* frame)
     user_data_ptr->sglist.sgl_head_ptr->size_in_bytes = data_size;
 
     CdiPtpTimestamp timestamp;
-    timestamp.seconds = floor(frame->timestamp / 1000000000);
-    timestamp.nanoseconds = frame->timestamp - (timestamp.seconds * 1000000000);
+    timestamp.seconds = (uint32_t)floor(frame->timestamp / 1000000000);
+    timestamp.nanoseconds = (uint32_t)(frame->timestamp - (timestamp.seconds * 1000000000));
 
     // Send the audio payload.
     if (!SendAvmPayload(user_data_ptr, &timestamp, &cdi_ptr->avm_audio_config, cdi_ptr->audio_unit_size,

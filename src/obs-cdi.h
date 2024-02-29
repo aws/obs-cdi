@@ -29,9 +29,12 @@ extern "C" {
 
 #define MAX_PAYLOAD_SIZE								(1920*1080*4*12/8)
 #define CDI_MAX_SIMULTANEOUS_TX_PAYLOADS_PER_CONNECTION (8)
-#define MAX_NUMBER_OF_TX_PAYLOADS						(CDI_MAX_SIMULTANEOUS_TX_PAYLOADS_PER_CONNECTION + 1)
+#define MAX_NUMBER_OF_TX_PAYLOADS				(CDI_MAX_SIMULTANEOUS_TX_PAYLOADS_PER_CONNECTION + 1)
 
 #define blog(level, msg, ...) blog(level, "[obs-cdi] " msg, ##__VA_ARGS__)
+
+#define MAX(x, y) (((x) > (y)) ? (x) : (y))
+#define MIN(x, y) (((x) < (y)) ? (x) : (y))
 
 extern CdiLogMethodData log_method_data;
 

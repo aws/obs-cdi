@@ -56,10 +56,10 @@ void Config::Load() {
 		OutputEnabled = config_get_bool(obs_config, SECTION_NAME, PARAM_MAIN_OUTPUT_ENABLED);
 		OutputName = config_get_string(obs_config, SECTION_NAME, PARAM_MAIN_OUTPUT_NAME);
 		OutputDest = config_get_string(obs_config, SECTION_NAME, PARAM_MAIN_OUTPUT_DEST);
-		OutputPort = config_get_int(obs_config, SECTION_NAME, PARAM_MAIN_OUTPUT_PORT);
+		OutputPort = (int)config_get_int(obs_config, SECTION_NAME, PARAM_MAIN_OUTPUT_PORT);
 		OutputIP = config_get_string(obs_config, SECTION_NAME, PARAM_MAIN_OUTPUT_IP);
-		OutputVideoStreamId = config_get_int(obs_config, SECTION_NAME, PARAM_MAIN_OUTPUT_VIDEO_STREAM_ID);
-		OutputAudioStreamId = config_get_int(obs_config, SECTION_NAME, PARAM_MAIN_OUTPUT_AUDIO_STREAM_ID);
+		OutputVideoStreamId = (int)config_get_int(obs_config, SECTION_NAME, PARAM_MAIN_OUTPUT_VIDEO_STREAM_ID);
+		OutputAudioStreamId = (int)config_get_int(obs_config, SECTION_NAME, PARAM_MAIN_OUTPUT_AUDIO_STREAM_ID);
 		OutputVideoSampling = (CdiAvmVideoSampling)config_get_int(obs_config, SECTION_NAME, PARAM_MAIN_OUTPUT_VIDEO_SAMPLING);
 		OutputAlphaUsed = config_get_bool(obs_config, SECTION_NAME, PARAM_MAIN_OUTPUT_ALPHA_USED);
 		OutputBitDepth = (CdiAvmVideoBitDepth)config_get_int(obs_config, SECTION_NAME, PARAM_MAIN_OUTPUT_BIT_DEPTH);

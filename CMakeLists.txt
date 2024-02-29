@@ -1,15 +1,25 @@
 # --------------------------------------------------------------------------------
-# Configure these settings a necessary. Example paths are shown.
+# Note: Must define the following variables on the cmake command line:
+#
+# CDI_DIR= Path to CDI-SDK root folder.
+# CMAKE_INSTALL_PREFIX= Path where the built OBS Studio is installed.
+#
+# For example, for Windows:
+#  -DCDI_DIR="C:/CDI/aws-cdi-sdk"
+#  -DCMAKE_INSTALL_PREFIX="C:/obs-studio"
+#
+# For example, for Linux:
+#  -DCDI_DIR="/home/rocky/CDI/aws-cdi-sdk"
+#  -DCMAKE_INSTALL_PREFIX="/home/rocky/obs-studio-portable"
 # --------------------------------------------------------------------------------
-# Path to CDI-SDK root folder:
-set(CDI_DIR "D:/CDI/aws-cdi-sdk")
 
-# Path where OBS was installed and built using Debug build:
-set (OBS_DIR "D:/obs-studio")
+set (OBS_DIR "${CMAKE_INSTALL_PREFIX}")
 
 # Should not have to modify these settings, but here incase OBS changes them.
 set (OBS_BUILDDIR_ARCH "build_x64")
 set (OBS_ARCH_NAME "64bit")
+set (libobs_DIR "${OBS_DIR}/cmake/libobs")
+set (obs-frontend-api_DIR "${OBS_DIR}/cmake/obs-frontend-api")
 
 # --------------------------------------------------------------------------------
 # Unless otherwise stated "For CDI-plugin", all lines below here are from the OBS
@@ -58,7 +68,12 @@ endif()
 
 # For CDI-plugin. Add CDI includes and link library.
 include_directories("${CDI_DIR}/include")
-target_link_libraries(${CMAKE_PROJECT_NAME} PRIVATE "${CDI_DIR}/proj/x64/$<CONFIG>_DLL/cdi_sdk.lib")
+if(WIN32)
+  target_link_libraries(${CMAKE_PROJECT_NAME} PRIVATE "${CDI_DIR}/proj/x64/$<CONFIG>_DLL/cdi_sdk.lib")
+else()
+  target_link_libraries(${CMAKE_PROJECT_NAME} PRIVATE "${CDI_DIR}/build/debug/lib/libcdisdk.so")
+  add_compile_definitions(_LINUX)
+endif()
 
 # For CDI-plugin. Add source and header files.
 target_sources(${CMAKE_PROJECT_NAME} PRIVATE
@@ -79,8 +94,8 @@ set_target_properties_plugin(${CMAKE_PROJECT_NAME} PROPERTIES OUTPUT_NAME ${_nam
 
 # For CDI-plugin. Windows post build commands.
 if(WIN32)
-set(CDI_LIB_DIR "${CDI_DIR}//proj/x64/$<CONFIG>_DLL")
-set(DEST_ROOT_DIR "${OBS_DIR}/${OBS_BUILDDIR_ARCH}/rundir/$<CONFIG>")
+	set(CDI_LIB_DIR "${CDI_DIR}//proj/x64/$<CONFIG>_DLL")
+	set(DEST_ROOT_DIR "${OBS_DIR}/${OBS_BUILDDIR_ARCH}/rundir/$<CONFIG>")
 	set(DEST_BIN_DIR "${DEST_ROOT_DIR}/bin/${OBS_ARCH_NAME}")
 	add_custom_command(TARGET obs-cdi POST_BUILD
 
@@ -143,4 +158,15 @@ set(DEST_ROOT_DIR "${OBS_DIR}/${OBS_BUILDDIR_ARCH}/rundir/$<CONFIG>")
 				"${DEST_ROOT_DIR}/data/obs-plugins/obs-cdi/locale"
 			)
 	)
+else()
+	set(CDI_LIB_DIR "${CDI_DIR}/build/debug/lib")
+	set(DEST_ROOT_DIR "${OBS_DIR}")
+	set(DEST_BIN_DIR "${OBS_DIR}/bin/${OBS_ARCH_NAME}")
+
+	install(DIRECTORY "${CDI_LIB_DIR}/" DESTINATION "${DEST_BIN_DIR}")
+	install(FILES "build/${CMAKE_PROJECT_NAME}.so" DESTINATION "${DEST_ROOT_DIR}/obs-plugins/${OBS_ARCH_NAME}")
+
+	install(DIRECTORY DESTINATION "${DEST_ROOT_DIR}/data/obs-plugins/obs-cdi")
+	install(DIRECTORY DESTINATION "${DEST_ROOT_DIR}/data/obs-plugins/obs-cdi/locale")
+	install(DIRECTORY "${PROJECT_SOURCE_DIR}/locale/" DESTINATION "${DEST_ROOT_DIR}/data/obs-plugins/obs-cdi/locale")
 endif()

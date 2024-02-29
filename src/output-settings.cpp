@@ -65,6 +65,7 @@ void OutputSettings::UpdateControls()
 
 void OutputSettings::VideoSamplingChanged(int index)
 {
+	(void)index;
 	Config* conf = Config::Current();
 
 	conf->OutputVideoSampling = (CdiAvmVideoSampling)ui->mainComboBoxVideoSampling->currentIndex();
@@ -73,6 +74,7 @@ void OutputSettings::VideoSamplingChanged(int index)
 
 void OutputSettings::BitDepthChanged(int index)
 {
+	(void)index;
 	Config* conf = Config::Current();
 
 	conf->OutputBitDepth = (CdiAvmVideoBitDepth)ui->mainComboBoxBitDepth->currentIndex();
@@ -106,6 +108,7 @@ void OutputSettings::onFormAccepted() {
 }
 
 void OutputSettings::showEvent(QShowEvent* event) {
+	(void)event;
 	Config* conf = Config::Current();
 
 	ui->mainOutputGroupBox->setChecked(conf->OutputEnabled);
