@@ -7,7 +7,7 @@ These are the build instructions for the OBS Studio CDI plugin. The broad steps
 
 **CDI outputs**: For YCbCr outputs, OBS Studio's pixel format must be set to ```I444```. For RGB outputs, the pixel format must be set to ```BGRA (8-bit)```. Audio is supported from 1-8 channels, as limited by OBS Studio. We have tested this plugin with various frame rates and raster sizes but find that 1080p60 performs the best.
 
-**CDI sources**: No additional configuration of OBS Studio is required. Up to 8 audio channels are supported, as limited by OBS Studio. 
+**CDI sources**: No additional configuration of OBS Studio is required. Up to 8 audio channels are supported, as limited by OBS Studio.
 
 <!-- @import "[TOC]" {cmd="toc" depthFrom=1 depthTo=6 orderedList=false} -->
 
@@ -22,17 +22,19 @@ These are the build instructions for the OBS Studio CDI plugin. The broad steps
 - [Installing on Linux](#installing-on-linux)
   - [Configure Rocky Linux 9 for GUI](#configure-rocky-linux-9-for-gui)
   - [Install NVIDIA driver on Linux](#install-nvidia-driver-on-linux)
-- [Enable graphical mode and configure NVIDIA.](#enable-graphical-mode-and-configure-nvidia)
-- [Disable firewall:](#disable-firewall)
-- [Or allow TCP traffic on port 8443:](#or-allow-tcp-traffic-on-port-8443)
-- [Install rpm fusion](#install-rpm-fusion)
-- [Install dev tools](#install-dev-tools)
-- [This package was not found, so used RPM.](#this-package-was-not-found-so-used-rpm)
-- [sudo dnf install libjansson-devel](#sudo-dnf-install-libjansson-devel)
-- [This package was not found and I could not find a RPM. Doesn't seem to be required.](#this-package-was-not-found-and-i-could-not-find-a-rpm-doesnt-seem-to-be-required)
-- [sudo dnf install qt6-qtx11extras-devel -y](#sudo-dnf-install-qt6-qtx11extras-devel--y)
-- [Additional packages that I had to install.](#additional-packages-that-i-had-to-install)
-- [Add this to ~/.bashrc so the new cmake is used by default.](#add-this-to-bashrc-so-the-new-cmake-is-used-by-default)
+  - [Install NiceDCV for remote GUI access on Linux](#install-nicedcv-for-remote-gui-access-on-linux)
+  - [Download and Build AWS CDI-SDK and Dependencies on Linux](#download-and-build-aws-cdi-sdk-and-dependencies-on-linux)
+  - [Download and Build OBS Studio and Dependencies on Linux](#download-and-build-obs-studio-and-dependencies-on-linux)
+    - [Install OBS Studio dependencies](#install-obs-studio-dependencies)
+  - [Download and Build the OBS Studio CDI Plugin on Linux](#download-and-build-the-obs-studio-cdi-plugin-on-linux)
+    - [Install plugin dependencies](#install-plugin-dependencies)
+    - [Optional: install Visual Studio Code](#optional-install-visual-studio-code)
+    - [Download plugin](#download-plugin)
+    - [Build plugin](#build-plugin)
+  - [Debugging the OBS Studio CDI Plugin on Linux](#debugging-the-obs-studio-cdi-plugin-on-linux)
+- [CDI Output Configuration](#cdi-output-configuration)
+  - [CDI Source Configuration](#cdi-source-configuration)
+  - [OBS Studio CDI Plugin Logging](#obs-studio-cdi-plugin-logging)
 
 <!-- /code_chunk_output -->
 
@@ -193,6 +195,9 @@ Install **aws cli** using [this guide](https://docs.aws.amazon.com/cli/latest/us
 aws s3 cp --recursive s3://ec2-linux-nvidia-drivers/latest/ .
 chmod +x NVIDIA-Linux-x86_64*.run
 sudo /bin/sh ./NVIDIA-Linux-x86_64*.run
+
+# Enable graphical mode and configure NVIDIA.
+sudo systemctl set-default graphical.target
 ```
 
 Optionally, instead of installing **aws cli** you can use **wget** to download the driver. To find the filename of the latest driver use [this link]("https://s3.amazonaws.com/ec2-linux-nvidia-drivers/").
@@ -203,10 +208,6 @@ Then, look for **\<Key\>latest/**. An example is shown below that shows the key 
 <Key>latest/NVIDIA-Linux-x86_64-550.54.14-grid-aws.run</Key>
 
 wget "s3://ec2-linux-nvidia-drivers/latest/NVIDIA-Linux-x86_64-550.54.14-grid-aws.run"
-```
-
-# Enable graphical mode and configure NVIDIA.
-sudo systemctl set-default graphical.target
 ```
 
 **Disable GSP**
@@ -297,7 +298,7 @@ Install a NiceDCV client on your client system and then, use the connection stri
 <remote_ip>:8443?transport=auto#console
 ```
 
-**Note**: When prompted, use "rocky" as the user. You may have to select **Other User** during second part of login.
+**Note**: When prompted, use "rocky" as the user. For second part of login, can select **Other User** and use the "rocky" user's password.
 
 ## Download and Build AWS CDI-SDK and Dependencies on Linux
 
