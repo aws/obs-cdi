@@ -22,7 +22,7 @@
 extern "C" {
 #include "cdi_logger_api.h"
 
-#define OBS_CDI_VERSION "2.0.0"
+#define OBS_CDI_VERSION "2.0.1"
 
 /// @brief Number of bytes in CDI audio sample. CDI requests 24-bit int for audio, so needs three bytes.
 #define CDI_BYTES_PER_AUDIO_SAMPLE              (3)

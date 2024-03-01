@@ -7,7 +7,7 @@ These are the build instructions for the OBS Studio CDI plugin. The broad steps
 
 **CDI outputs**: For YCbCr outputs, OBS Studio's pixel format must be set to ```I444```. For RGB outputs, the pixel format must be set to ```BGRA (8-bit)```. Audio is supported from 1-8 channels, as limited by OBS Studio. We have tested this plugin with various frame rates and raster sizes but find that 1080p60 performs the best.
 
-**CDI sources**: No additional configuration of OBS Studio is required. All progressive video CDI sources are supported. Up to 8 audio channels are supported, as limited by OBS Studio.
+**CDI sources**: No additional configuration of OBS Studio is required. Up to 8 audio channels are supported, as limited by OBS Studio. 
 
 <!-- @import "[TOC]" {cmd="toc" depthFrom=1 depthTo=6 orderedList=false} -->
 
@@ -22,18 +22,17 @@ These are the build instructions for the OBS Studio CDI plugin. The broad steps
 - [Installing on Linux](#installing-on-linux)
   - [Configure Rocky Linux 9 for GUI](#configure-rocky-linux-9-for-gui)
   - [Install NVIDIA driver on Linux](#install-nvidia-driver-on-linux)
-  - [Install NiceDCV for remote GUI access on Linux](#install-nicedcv-for-remote-gui-access-on-linux)
-  - [Download and Build AWS CDI-SDK and Dependencies on Linux](#download-and-build-aws-cdi-sdk-and-dependencies-on-linux)
-  - [Download and Build OBS Studio and Dependencies on Linux](#download-and-build-obs-studio-and-dependencies-on-linux)
-    - [Install OBS Studio dependencies](#install-obs-studio-dependencies)
-  - [Download and Build the OBS Studio CDI Plugin on Linux](#download-and-build-the-obs-studio-cdi-plugin-on-linux)
-    - [Install plugin dependencies](#install-plugin-dependencies)
-    - [Download plugin](#download-plugin)
-    - [Build plugin](#build-plugin)
-  - [Debugging the OBS Studio CDI Plugin on Linux](#debugging-the-obs-studio-cdi-plugin-on-linux)
-- [CDI Output Configuration](#cdi-output-configuration)
-  - [CDI Source Configuration](#cdi-source-configuration)
-  - [OBS Studio CDI Plugin Logging](#obs-studio-cdi-plugin-logging)
+- [Enable graphical mode and configure NVIDIA.](#enable-graphical-mode-and-configure-nvidia)
+- [Disable firewall:](#disable-firewall)
+- [Or allow TCP traffic on port 8443:](#or-allow-tcp-traffic-on-port-8443)
+- [Install rpm fusion](#install-rpm-fusion)
+- [Install dev tools](#install-dev-tools)
+- [This package was not found, so used RPM.](#this-package-was-not-found-so-used-rpm)
+- [sudo dnf install libjansson-devel](#sudo-dnf-install-libjansson-devel)
+- [This package was not found and I could not find a RPM. Doesn't seem to be required.](#this-package-was-not-found-and-i-could-not-find-a-rpm-doesnt-seem-to-be-required)
+- [sudo dnf install qt6-qtx11extras-devel -y](#sudo-dnf-install-qt6-qtx11extras-devel--y)
+- [Additional packages that I had to install.](#additional-packages-that-i-had-to-install)
+- [Add this to ~/.bashrc so the new cmake is used by default.](#add-this-to-bashrc-so-the-new-cmake-is-used-by-default)
 
 <!-- /code_chunk_output -->
 
@@ -76,7 +75,7 @@ To build it, Use Visual Studio to open the ```aws-cdi-sdk/proj/cdi_proj.sln``` V
 
 Follow the instructions at [Windows build directions](https://obsproject.com/wiki/install-instructions#windows-build-directions). A few additional notes are below:
 
-When creating the OBS Studio Visual Studio project files, use a Visual Studio Powershell to run these commands:
+When creating the OBS Studio Visual Studio project files, use a **Visual Studio Powershell** to run these commands:
 
  ```
  cd obs-studio
@@ -89,13 +88,13 @@ Build OBS Studio as a ```Debug``` or ```Release``` build: Build → Build Soluti
 
 ### Download and Build the OBS Studio CDI Plugin on Windows
 
-In a Visual Studio Powershell, navigate to the location you would like the OBS CDI plugin to download to. Download the OBS Studio CDI plugin repository using:
+In a **Visual Studio Powershell**, navigate to the location you would like the OBS CDI plugin to download to. Download the OBS Studio CDI plugin repository using:
 
 ```
 git clone https://github.com/aws/obs-cdi.git
 ```
 
-In a Visual Studio Powershell, navigate to where you installed the plugin and use the commands shown below. Set **CDI_DIR** to that path where the CDI-SDK was installed and set **CMAKE_INSTALL_PREFIX** to the path where the built OBS Studio was installed. Default paths are shown.
+Then, use the commands shown below to generate the Visual Studio solution and project files. Set **CDI_DIR** to that path where the CDI-SDK was installed and set **CMAKE_INSTALL_PREFIX** to the path where the built OBS Studio was installed. Default paths are shown.
 
 ```
 cd obs-cdi
@@ -167,8 +166,7 @@ sudo dnf install -y make gcc kernel-devel kernel-headers elfutils-libelf-devel e
 sudo dnf config-manager --set-enabled crb
 sudo dnf install -y https://dl.fedoraproject.org/pub/epel/epel-release-latest-9.noarch.rpm
 sudo dnf install -y https://dl.fedoraproject.org/pub/epel/epel-next-release-latest-9.noarch.rpm
-sudo dnf install -y wget
-sudo dnf install -y java-17-openjdk java-17-openjdk-devel apr apr-util mesa-libGLU xcb-util-image xcb-util-keysyms xcb-util-renderutil xcb-util-wm
+sudo dnf install -y wget java-17-openjdk java-17-openjdk-devel apr apr-util mesa-libGLU xcb-util-image xcb-util-keysyms xcb-util-renderutil xcb-util-wm
 ```
 
 **Blacklist the Nouveau driver**
@@ -188,21 +186,24 @@ sudo reboot
 ```
 
 **Download and install the NVIDIA driver**
-The NVIDIA drivers that are available for download are [here](https://s3.amazonaws.com/ec2-linux-nvidia-drivers). An example to download a specific version is shown below:
 
-```
-wget "https://s3.amazonaws.com/ec2-linux-nvidia-drivers/grid-16.3/NVIDIA-Linux-x86_64-535.154.05-grid-aws.run"
-```
+Install **aws cli** using [this guide](https://docs.aws.amazon.com/cli/latest/userguide/getting-started-install.html). Then download the latest driver and install using these commands:
 
-If **aws** is installed, can optionally use the command shown below to download the latest driver version:
 ```
 aws s3 cp --recursive s3://ec2-linux-nvidia-drivers/latest/ .
+chmod +x NVIDIA-Linux-x86_64*.run
+sudo /bin/sh ./NVIDIA-Linux-x86_64*.run
 ```
 
-After downloading the driver, install using the commands shown below:
+Optionally, instead of installing **aws cli** you can use **wget** to download the driver. To find the filename of the latest driver use [this link]("https://s3.amazonaws.com/ec2-linux-nvidia-drivers/").
+
+Then, look for **\<Key\>latest/**. An example is shown below that shows the key and the command used to download the driver:
+
 ```
-chmod +x NVIDIA-Linux-x86_64-535.154.05-grid-aws.run
-sudo /bin/sh ./NVIDIA-Linux-x86_64-535.154.05-grid-aws.run
+<Key>latest/NVIDIA-Linux-x86_64-550.54.14-grid-aws.run</Key>
+
+wget "s3://ec2-linux-nvidia-drivers/latest/NVIDIA-Linux-x86_64-550.54.14-grid-aws.run"
+```
 
 # Enable graphical mode and configure NVIDIA.
 sudo systemctl set-default graphical.target
@@ -223,7 +224,7 @@ sudo reboot
 
 **Note**: Using Windows RDP is not recommended. I was not able to get to work correctly with OBS Studio's source rendering window (it would not render).
 
-The install steps shown below were based on the [DCV Linux Install Guide]((https://docs.aws.amazon.com/dcv/latest/adminguide/setting-up-installing-linux.html) to install NiceDCV for **console** sessions.
+The install steps shown below were based on the [DCV Linux Install Guide](https://docs.aws.amazon.com/dcv/latest/adminguide/setting-up-installing-linux.html) to install NiceDCV for **console** sessions.
 
 **Note**: Must enable S3 for dcv-license by adding permission to AMI associated with the instance. Details are [here](https://docs.aws.amazon.com/dcv/latest/adminguide/setting-up-license.html).
 
@@ -347,7 +348,7 @@ sudo dnf install libxkbcommon-devel libqrcodegencpp-devel oneVPL-devel srt-devel
 
 **Upgrade from default cmake is required**
 
-Default cmake version is 3.20, while OBS Studio requires 3.22 or later.
+Had to upgrade to a newer version of cmake. Default version is 3.20, while OBS Studio requires 3.22 or later.
 
 ```
 wget https://github.com/Kitware/CMake/releases/download/v3.28.3/cmake-3.28.3.tar.gz
@@ -362,7 +363,7 @@ export PATH="/usr/local/bin:$PATH"
 ```
 
 **Download and build OBS Studio**
-OBS Studio version 30.0.2 was tested. Newer versions may require additional changes to this document and files. Download the files and checkout version **30.0.2** using:
+OBS Studio version 30.0.2 was tested. Newer versions may require addtional changes to this document and files. Download the files and checkout version 30.0.2 using:
 
 ```
 git clone --recursive https://github.com/obsproject/obs-studio.git
@@ -393,6 +394,10 @@ cd ~/obs-studio-portable/bin/64bit
 ```
 sudo dnf install ninja-build
 ```
+
+### Optional: install Visual Studio Code
+
+If you prefer to use Visual Studio Code to build and debug the plugin, you can install it using [this guide](https://code.visualstudio.com/docs/setup/linux). A Visual Studio Code workspace file **obs-cdi.code-workspace** and associated **.vscode** folder are included with the plugin.
 
 ### Download plugin
 
@@ -481,7 +486,7 @@ Bit Depth - 8, 10 and 12-bit.
 
 ## CDI Source Configuration
 
-Use the CDI Source Properties to setting the following configuratin settings:
+Use the CDI Source Properties to set the following configuration settings:
 
 ```
 Local EFA Adapter IP - The local IP address assigned to the EFA adapter
